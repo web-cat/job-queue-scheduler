@@ -1,9 +1,11 @@
 # job-queue-scheduler
 
-## Get Started
-### Pre-req:
-    - Have [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed
+
+## Pre-req:
+    - Have Docker Desktop installed
     - have node 24.14.1 and npm 11.11 installed. (AdonisJS requirement).
+
+## Get Started
 - Fork repo
 - Go to the **execution service** directory 
 ```bash
@@ -47,6 +49,7 @@ Use `--build` the first time or after Dockerfile / dependency changes so the ima
 docker compose up
 ``` 
 
+## Useful Commands
 ### To view database and make some queries in the terminal (make sure to replace the DB_USER and DB_NAME with the actual values), run this command (it uses psql which is CLI for databases):
 ```bash
 docker compose exec database_service psql -U DB_USER -d DB_NAME
