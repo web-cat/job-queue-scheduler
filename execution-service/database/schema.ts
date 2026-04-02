@@ -7,44 +7,50 @@
 import { BaseModel, column } from '@adonisjs/lucid/orm'
 import { DateTime } from 'luxon'
 
-export class AuthAccessTokenSchema extends BaseModel {
-  static $columns = ['abilities', 'createdAt', 'expiresAt', 'hash', 'id', 'lastUsedAt', 'name', 'tokenableId', 'type', 'updatedAt'] as const
-  $columns = AuthAccessTokenSchema.$columns
+export class JobResultSchema extends BaseModel {
+  static $columns = ['cpuUsage', 'endedAt', 'exitCode', 'jobId', 'jobResults', 'nodeIp', 'podName', 'ramUsage', 'retryCount', 'runtimeMs', 'startedAt', 'terminationCause'] as const
+  $columns = JobResultSchema.$columns
   @column()
-  declare abilities: string
-  @column.dateTime({ autoCreate: true })
-  declare createdAt: DateTime | null
+  declare cpuUsage: number | null
   @column.dateTime()
-  declare expiresAt: DateTime | null
+  declare endedAt: DateTime | null
   @column()
-  declare hash: string
+  declare exitCode: number | null
   @column({ isPrimary: true })
-  declare id: number
+  declare jobId: bigint | number
+  @column()
+  declare jobResults: any | null
+  @column()
+  declare nodeIp: string | null
+  @column()
+  declare podName: string | null
+  @column()
+  declare ramUsage: bigint | number | null
+  @column()
+  declare retryCount: number
+  @column()
+  declare runtimeMs: number | null
   @column.dateTime()
-  declare lastUsedAt: DateTime | null
+  declare startedAt: DateTime | null
   @column()
-  declare name: string | null
-  @column()
-  declare tokenableId: number
-  @column()
-  declare type: string
-  @column.dateTime({ autoCreate: true, autoUpdate: true })
-  declare updatedAt: DateTime | null
+  declare terminationCause: string | null
 }
 
-export class UserSchema extends BaseModel {
-  static $columns = ['createdAt', 'email', 'fullName', 'id', 'password', 'updatedAt'] as const
-  $columns = UserSchema.$columns
+export class SubmittedJobSchema extends BaseModel {
+  static $columns = ['createdAt', 'estimatedServiceTime', 'jobId', 'priority', 'status', 'submissionId', 'workerImage'] as const
+  $columns = SubmittedJobSchema.$columns
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
   @column()
-  declare email: string
-  @column()
-  declare fullName: string | null
+  declare estimatedServiceTime: number
   @column({ isPrimary: true })
-  declare id: number
-  @column({ serializeAs: null })
-  declare password: string
-  @column.dateTime({ autoCreate: true, autoUpdate: true })
-  declare updatedAt: DateTime | null
+  declare jobId: bigint | number
+  @column()
+  declare priority: number
+  @column()
+  declare status: any
+  @column()
+  declare submissionId: bigint | number
+  @column()
+  declare workerImage: string
 }

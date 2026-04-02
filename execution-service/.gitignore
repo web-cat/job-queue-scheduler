@@ -1,6 +1,7 @@
 # Dependencies and AdonisJS build
 node_modules
 build
+db_password.txt
 tmp/*
 !tmp/.gitkeep
 
@@ -21,9 +22,7 @@ yarn-error.log
 .fleet
 .idea
 .vscode
+.cursorignore
 
 # Platform specific
 .DS_Store
-
-# Folders to be ignored
-tmp/
