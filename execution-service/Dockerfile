@@ -26,6 +26,29 @@ COPY . .
 RUN node ace build
 
 # ----------------------------
+# Stage: development — same Node version + npm ci lockfile as `deps`, full devDependencies
+# Use with docker-compose.dev.yml (bind-mount source + preserve node_modules volume).
+# ----------------------------
+FROM deps AS development
+WORKDIR /app
+
+ENV NODE_ENV=development
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY docker-entrypoint.dev.sh /usr/local/bin/docker-entrypoint.dev.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.dev.sh
+
+COPY . .
+
+EXPOSE 3333
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.dev.sh"]
+CMD ["npm", "run", "dev"]
+
+# ----------------------------
 # Stage 3: minimal runtime with production deps only
 # ----------------------------
 ARG NODE_VERSION=24.11.0
