@@ -29,6 +29,7 @@ docker compose -f docker-compose.dev.yml up
 ```bash
 docker compose -f docker-compose.dev.yml exec app node ace migration:run
 ```
+  - Run this command only the first time and everytime the migration files change.
 
 ## Useful Commands
 ### To view database and make some queries in the terminal (make sure to replace the DB_USER and DB_NAME with the actual values), run this command (it uses psql which is CLI for databases):
