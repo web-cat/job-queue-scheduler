@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { errors } from '@adonisjs/http-server'
 import type { MultipartFile } from '@adonisjs/core/bodyparser'
@@ -37,6 +37,61 @@ class FileService {
     try {
       await mkdir(inputPath, { recursive: true })
 
+      // Check for duplicate filenames in current batch
+      const fileNames = new Set<string>()
+      const duplicates: string[] = []
+
+      for (const file of files) {
+        const safeFileName = path.basename(file.clientName)
+        if (fileNames.has(safeFileName)) {
+          duplicates.push(safeFileName)
+        }
+        fileNames.add(safeFileName)
+      }
+
+      if (duplicates.length > 0) {
+        throw errors.E_HTTP_EXCEPTION.invoke(
+          {
+            error: {
+              code: 'DUPLICATE_FILENAMES',
+              message: `Duplicate filenames detected: ${duplicates.join(', ')}. Each file must have a unique name.`,
+            },
+          },
+          400
+        )
+      }
+
+      // Check for conflicts with existing files
+      let existingFiles: string[] = []
+      try {
+        existingFiles = await readdir(inputPath)
+      } catch (error: any) {
+        // Directory doesn't exist yet, that's fine
+        if (error?.code !== 'ENOENT') {
+          throw error
+        }
+      }
+
+      const conflicts: string[] = []
+      for (const file of files) {
+        const safeFileName = path.basename(file.clientName)
+        if (existingFiles.includes(safeFileName)) {
+          conflicts.push(safeFileName)
+        }
+      }
+
+      if (conflicts.length > 0) {
+        throw errors.E_HTTP_EXCEPTION.invoke(
+          {
+            error: {
+              code: 'FILE_ALREADY_EXISTS',
+              message: `Files already exist in this job submission: ${conflicts.join(', ')}. Cannot overwrite existing files.`,
+            },
+          },
+          400
+        )
+      }
+
       for (const file of files) {
         if (!file.isValid) {
           throw errors.E_HTTP_EXCEPTION.invoke(
@@ -51,7 +106,7 @@ class FileService {
         }
 
         const safeFileName = path.basename(file.clientName)
-        await file.move(inputPath, { name: safeFileName, overwrite: true })
+        await file.move(inputPath, { name: safeFileName, overwrite: false })
 
         if (!file.isValid) {
           throw errors.E_HTTP_EXCEPTION.invoke(
