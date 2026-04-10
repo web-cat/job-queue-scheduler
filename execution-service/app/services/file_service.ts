@@ -1,4 +1,4 @@
-import { mkdir, readdir } from 'node:fs/promises'
+import { mkdir, readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { errors } from '@adonisjs/http-server'
 import type { MultipartFile } from '@adonisjs/core/bodyparser'
@@ -9,6 +9,19 @@ class FileService {
 
   getInputPath(jobId: number): string {
     return path.join(this.submissionsPath, String(jobId), 'input')
+  }
+
+  /**
+   * Clean up the submission directory for a job (called on submission failure)
+   */
+  async cleanupSubmissionDirectory(jobId: number): Promise<void> {
+    const jobPath = path.join(this.submissionsPath, String(jobId))
+    try {
+      await rm(jobPath, { recursive: true, force: true })
+    } catch (error) {
+      // Log but don't throw — cleanup failures shouldn't cascade
+      console.error(`Failed to cleanup submission directory for job ${jobId}:`, error)
+    }
   }
 
   async storeSubmissionFiles(jobId: number, files: MultipartFile[]): Promise<string> {

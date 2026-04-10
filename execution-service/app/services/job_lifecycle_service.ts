@@ -110,36 +110,44 @@ class JobLifecycleService {
     }
 
     const reservedJobId = await this.reserveJobId()
-    const sourcePath = await fileService.storeSubmissionFiles(reservedJobId, payload.files)
-    const estimatedRuntime = imageConfig.avgRuntimeSeconds ?? imageConfig.defaultEstimatedRuntime
+    
+    try {
+      const sourcePath = await fileService.storeSubmissionFiles(reservedJobId, payload.files)
+      const estimatedRuntime = imageConfig.avgRuntimeSeconds ?? imageConfig.defaultEstimatedRuntime
 
-    const job = await Job.create({
-      jobId: reservedJobId,
-      submissionId: payload.submission_id,
-      dockerImageTag: payload.docker_image_tag,
-      status: 'pending',
-      priority: payload.priority ?? imageConfig.defaultPriority,
-      sourcePath,
-      callbackUrl: payload.callback_url ?? null,
-      resultDelivered: false,
-      estimatedRuntime,
-      imageConfigId: imageConfig.id,
-      userId: payload.user_id ?? null,
-      courseId: payload.course_id ?? null,
-      assignmentName: payload.assignment_name ?? null,
-    })
+      const job = await Job.create({
+        jobId: reservedJobId,
+        submissionId: payload.submission_id,
+        dockerImageTag: payload.docker_image_tag,
+        status: 'pending',
+        priority: payload.priority ?? imageConfig.defaultPriority,
+        sourcePath,
+        callbackUrl: payload.callback_url ?? null,
+        resultDelivered: false,
+        estimatedRuntime,
+        imageConfigId: imageConfig.id,
+        userId: payload.user_id ?? null,
+        courseId: payload.course_id ?? null,
+        assignmentName: payload.assignment_name ?? null,
+      })
 
-    const persistedJob = await Job.findOrFail(job.jobId)
-    const jobsAhead = await this.countJobsAhead(persistedJob)
+      const persistedJob = await Job.findOrFail(job.jobId)
+      const jobsAhead = await this.countJobsAhead(persistedJob)
 
-    return {
-      job_id: Number(job.jobId),
-      submission_id: job.submissionId,
-      status: job.status,
-      docker_image_tag: job.dockerImageTag,
-      estimated_runtime: job.estimatedRuntime,
-      queue_position: jobsAhead + 1,
-      submitted_at: job.submittedAt,
+      return {
+        job_id: Number(job.jobId),
+        submission_id: job.submissionId,
+        status: job.status,
+        docker_image_tag: job.dockerImageTag,
+        estimated_runtime: job.estimatedRuntime,
+        queue_position: jobsAhead + 1,
+        submitted_at: job.submittedAt,
+      }
+    } catch (error) {
+      // Cleanup submission directory if job creation fails
+      // This prevents orphaned directories when Job.create throws
+      await fileService.cleanupSubmissionDirectory(reservedJobId)
+      throw error
     }
   }
 
