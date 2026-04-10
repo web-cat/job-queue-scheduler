@@ -1,28 +1,37 @@
 import { DateTime } from 'luxon'
 import { BaseModel, belongsTo, column } from '@adonisjs/lucid/orm'
 import type { BelongsTo } from '@adonisjs/lucid/types/relations'
-import SubmittedJob from '#models/submitted_job'
+import Job from '#models/job'
 
 export default class JobResult extends BaseModel {
   static table = 'job_results'
 
   @column({ isPrimary: true })
-  declare jobId: number
-
-  @column.dateTime()
-  declare startedAt: DateTime | null
-
-  @column.dateTime()
-  declare endedAt: DateTime | null
+  declare id: number
 
   @column()
-  declare jobResults: Record<string, unknown> | null
+  declare jobId: number
+
+  @column()
+  declare correctnessScore: number | null
+
+  @column()
+  declare toolScore: number | null
+
+  @column()
+  declare comments: string | null
+
+  @column()
+  declare commentFormat: number | null
+
+  @column()
+  declare testOutput: string | null
+
+  @column()
+  declare containerLogs: string | null
 
   @column()
   declare exitCode: number | null
-
-  @column()
-  declare terminationCause: string | null
 
   @column()
   declare cpuUsage: number | null
@@ -39,11 +48,11 @@ export default class JobResult extends BaseModel {
   @column()
   declare nodeIp: string | null
 
-  @column()
-  declare retryCount: number
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
 
-  @belongsTo(() => SubmittedJob, {
+  @belongsTo(() => Job, {
     foreignKey: 'jobId',
   })
-  declare job: BelongsTo<typeof SubmittedJob>
+  declare job: BelongsTo<typeof Job>
 }
