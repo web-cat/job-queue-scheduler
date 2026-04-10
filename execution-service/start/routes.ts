@@ -28,10 +28,10 @@ router.delete('/api/v1/jobs/:id', [JobsController, 'destroy'])
 router.get('/api/v1/queue/status', [QueueController, 'status'])
 router.get('/api/v1/queue/position/:id', [QueueController, 'position'])
 
-router.get('/api/v1/config', [ConfigController, 'index'])
+router.get('/api/v1/config', [ConfigController, 'index']).use(middleware.auth())
 router.put('/api/v1/config/:key', [ConfigController, 'update']).use(middleware.auth())
 
-router.get('/api/v1/metrics/overview', [MetricsController, 'overview'])
-router.get('/api/v1/metrics/images', [MetricsController, 'imageBreakdown'])
+router.get('/api/v1/metrics/overview', [MetricsController, 'overview']).use(middleware.auth())
+router.get('/api/v1/metrics/images', [MetricsController, 'imageBreakdown']).use(middleware.auth())
 
 router.get('/api/v1/health', [HealthController, 'check'])
