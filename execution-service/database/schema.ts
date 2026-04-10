@@ -7,19 +7,81 @@
 import { BaseModel, column } from '@adonisjs/lucid/orm'
 import { DateTime } from 'luxon'
 
+export class CallbackLogSchema extends BaseModel {
+  static $columns = ['attemptNumber', 'attemptedAt', 'id', 'jobId', 'responseBody', 'responseCode', 'success', 'url'] as const
+  $columns = CallbackLogSchema.$columns
+  @column()
+  declare attemptNumber: number
+  @column.dateTime()
+  declare attemptedAt: DateTime
+  @column({ isPrimary: true })
+  declare id: bigint | number
+  @column()
+  declare jobId: bigint | number
+  @column()
+  declare responseBody: string | null
+  @column()
+  declare responseCode: number | null
+  @column()
+  declare success: boolean
+  @column()
+  declare url: string
+}
+
+export class ImageConfigSchema extends BaseModel {
+  static $columns = ['avgRuntimeSeconds', 'cpuLimitMillicores', 'createdAt', 'defaultEstimatedRuntime', 'defaultPriority', 'displayName', 'dockerImageTag', 'id', 'isActive', 'maxRetries', 'memoryLimitMb', 'timeoutSeconds', 'totalCompletedJobs', 'updatedAt'] as const
+  $columns = ImageConfigSchema.$columns
+  @column()
+  declare avgRuntimeSeconds: number | null
+  @column()
+  declare cpuLimitMillicores: number
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare defaultEstimatedRuntime: number
+  @column()
+  declare defaultPriority: number
+  @column()
+  declare displayName: string | null
+  @column()
+  declare dockerImageTag: string
+  @column({ isPrimary: true })
+  declare id: bigint | number
+  @column()
+  declare isActive: boolean
+  @column()
+  declare maxRetries: number
+  @column()
+  declare memoryLimitMb: number
+  @column()
+  declare timeoutSeconds: number
+  @column()
+  declare totalCompletedJobs: number
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+}
+
 export class JobResultSchema extends BaseModel {
-  static $columns = ['cpuUsage', 'endedAt', 'exitCode', 'jobId', 'jobResults', 'nodeIp', 'podName', 'ramUsage', 'retryCount', 'runtimeMs', 'startedAt', 'terminationCause'] as const
+  static $columns = ['commentFormat', 'comments', 'containerLogs', 'correctnessScore', 'cpuUsage', 'createdAt', 'exitCode', 'id', 'jobId', 'nodeIp', 'podName', 'ramUsage', 'runtimeMs', 'testOutput', 'toolScore'] as const
   $columns = JobResultSchema.$columns
   @column()
+  declare commentFormat: number | null
+  @column()
+  declare comments: string | null
+  @column()
+  declare containerLogs: string | null
+  @column()
+  declare correctnessScore: number | null
+  @column()
   declare cpuUsage: number | null
-  @column.dateTime()
-  declare endedAt: DateTime | null
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
   @column()
   declare exitCode: number | null
   @column({ isPrimary: true })
-  declare jobId: bigint | number
+  declare id: bigint | number
   @column()
-  declare jobResults: any | null
+  declare jobId: bigint | number
   @column()
   declare nodeIp: string | null
   @column()
@@ -27,30 +89,75 @@ export class JobResultSchema extends BaseModel {
   @column()
   declare ramUsage: bigint | number | null
   @column()
-  declare retryCount: number
-  @column()
   declare runtimeMs: number | null
-  @column.dateTime()
-  declare startedAt: DateTime | null
   @column()
-  declare terminationCause: string | null
+  declare testOutput: string | null
+  @column()
+  declare toolScore: number | null
 }
 
-export class SubmittedJobSchema extends BaseModel {
-  static $columns = ['createdAt', 'estimatedServiceTime', 'jobId', 'priority', 'status', 'submissionId', 'workerImage'] as const
-  $columns = SubmittedJobSchema.$columns
+export class JobSchema extends BaseModel {
+  static $columns = ['actualRuntime', 'assignmentName', 'callbackUrl', 'completedAt', 'courseId', 'createdAt', 'dockerImageTag', 'errorMessage', 'estimatedRuntime', 'hrrnScoreAtDequeue', 'imageConfigId', 'jobId', 'priority', 'resultDelivered', 'retryCount', 'sourcePath', 'startedAt', 'status', 'submissionId', 'submittedAt', 'updatedAt', 'userId', 'workerPodName'] as const
+  $columns = JobSchema.$columns
+  @column()
+  declare actualRuntime: number | null
+  @column()
+  declare assignmentName: string | null
+  @column()
+  declare callbackUrl: string | null
+  @column.dateTime()
+  declare completedAt: DateTime | null
+  @column()
+  declare courseId: bigint | number | null
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
   @column()
-  declare estimatedServiceTime: number
+  declare dockerImageTag: string
+  @column()
+  declare errorMessage: string | null
+  @column()
+  declare estimatedRuntime: number
+  @column()
+  declare hrrnScoreAtDequeue: number | null
+  @column()
+  declare imageConfigId: bigint | number
   @column({ isPrimary: true })
   declare jobId: bigint | number
   @column()
   declare priority: number
   @column()
-  declare status: any
+  declare resultDelivered: boolean
+  @column()
+  declare retryCount: number
+  @column()
+  declare sourcePath: string
+  @column.dateTime()
+  declare startedAt: DateTime | null
+  @column()
+  declare status: string
   @column()
   declare submissionId: bigint | number
+  @column.dateTime()
+  declare submittedAt: DateTime
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
   @column()
-  declare workerImage: string
+  declare userId: bigint | number | null
+  @column()
+  declare workerPodName: string | null
+}
+
+export class SystemSettingSchema extends BaseModel {
+  static $columns = ['description', 'id', 'key', 'updatedAt', 'value'] as const
+  $columns = SystemSettingSchema.$columns
+  @column()
+  declare description: string | null
+  @column({ isPrimary: true })
+  declare id: bigint | number
+  @column()
+  declare key: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+  @column()
+  declare value: string
 }

@@ -31,7 +31,7 @@ export default class extends BaseSchema {
   }
 
   async down() {
-    this.schema.dropTable(this.tableName)
+    this.schema.dropTableIfExists(this.tableName)
     this.schema.raw('DROP TYPE IF EXISTS submitted_job_status')
   }
 }
