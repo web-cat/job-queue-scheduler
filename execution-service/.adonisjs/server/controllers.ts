@@ -3,4 +3,6 @@
  * DO NOT EDIT manually
  */
 
-export const controllers = {}
+export const controllers = {
+  Jobs: () => import('#controllers/jobs_controller'),
+}

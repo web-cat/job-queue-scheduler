@@ -4,21 +4,23 @@ type ParamValue = string | number | bigint | boolean
 
 export type ScannedRoutes = {
   ALL: {
-    'auth.new_account.store': { paramsTuple?: []; params?: {} }
-    'auth.access_token.store': { paramsTuple?: []; params?: {} }
-    'auth.access_token.destroy': { paramsTuple?: []; params?: {} }
-    'profile.profile.show': { paramsTuple?: []; params?: {} }
+    'jobs.index': { paramsTuple?: []; params?: {} }
+    'jobs.show': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
+    'jobs.results': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
+    'jobs.destroy': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
   }
   GET: {
-    'profile.profile.show': { paramsTuple?: []; params?: {} }
+    'jobs.index': { paramsTuple?: []; params?: {} }
+    'jobs.show': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
+    'jobs.results': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
   }
   HEAD: {
-    'profile.profile.show': { paramsTuple?: []; params?: {} }
+    'jobs.index': { paramsTuple?: []; params?: {} }
+    'jobs.show': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
+    'jobs.results': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
   }
-  POST: {
-    'auth.new_account.store': { paramsTuple?: []; params?: {} }
-    'auth.access_token.store': { paramsTuple?: []; params?: {} }
-    'auth.access_token.destroy': { paramsTuple?: []; params?: {} }
+  DELETE: {
+    'jobs.destroy': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
   }
 }
 declare module '@adonisjs/core/types/http' {
