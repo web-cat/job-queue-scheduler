@@ -2,8 +2,10 @@ import db from '@adonisjs/lucid/services/db'
 import { errors } from '@adonisjs/http-server'
 import ImageConfig from '#models/image_config'
 import Job from '#models/job'
+import JobResult from '#models/job_result'
 import fileService from '#services/file_service'
 import type { MultipartFile } from '@adonisjs/core/bodyparser'
+import type { JobStatus } from '#models/job'
 
 type SubmitJobPayload = {
   docker_image_tag: string
@@ -16,7 +18,27 @@ type SubmitJobPayload = {
   files: MultipartFile[]
 }
 
+interface ListFilters {
+  submission_id?: number
+  user_id?: number
+  status?: JobStatus
+  docker_image_tag?: string
+}
+
+interface Pagination {
+  limit: number
+  offset: number
+}
+
+interface RawQueryResult<T> {
+  rows: T[]
+}
+
 class JobLifecycleService {
+  // ---------------------------------------------------------------------------
+  // Internal helpers
+  // ---------------------------------------------------------------------------
+
   private async reserveJobId(): Promise<number> {
     const result = (await db.rawQuery("SELECT nextval('jobs_job_id_seq') AS job_id")) as {
       rows: Array<{ job_id: string }>
@@ -33,8 +55,13 @@ class JobLifecycleService {
     return jobId
   }
 
-  private async getQueuePosition(job: Job): Promise<number> {
-    const currentScore = await this.getJobHrrnScore(job)
+  private getHrrnScore(job: Pick<Job, 'submittedAt' | 'estimatedRuntime'>): number {
+    const ageSeconds = Math.max(0, (Date.now() - job.submittedAt.toJSDate().getTime()) / 1000)
+    return (ageSeconds + job.estimatedRuntime) / job.estimatedRuntime
+  }
+
+  private async countJobsAhead(job: Job): Promise<number> {
+    const currentScore = this.getHrrnScore(job)
     const query = await db
       .from('jobs')
       .where('status', 'pending')
@@ -46,13 +73,12 @@ class JobLifecycleService {
       .count('* as total')
       .first()
 
-    return Number(query?.total || 0) + 1
+    return Number(query?.total || 0)
   }
 
-  private async getJobHrrnScore(job: Pick<Job, 'submittedAt' | 'estimatedRuntime'>): Promise<number> {
-    const ageSeconds = Math.max(0, (Date.now() - job.submittedAt.toJSDate().getTime()) / 1000)
-    return (ageSeconds + job.estimatedRuntime) / job.estimatedRuntime
-  }
+  // ---------------------------------------------------------------------------
+  // Task 3: Job submission
+  // ---------------------------------------------------------------------------
 
   async submitJob(payload: SubmitJobPayload) {
     const imageConfig = await ImageConfig.query()
@@ -104,7 +130,7 @@ class JobLifecycleService {
     })
 
     const persistedJob = await Job.findOrFail(job.jobId)
-    const queuePosition = await this.getQueuePosition(persistedJob)
+    const jobsAhead = await this.countJobsAhead(persistedJob)
 
     return {
       job_id: Number(job.jobId),
@@ -112,11 +138,152 @@ class JobLifecycleService {
       status: job.status,
       docker_image_tag: job.dockerImageTag,
       estimated_runtime: job.estimatedRuntime,
-      queue_position: queuePosition,
+      queue_position: jobsAhead + 1,
       submitted_at: job.submittedAt,
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Task 4: Job status & results
+  // ---------------------------------------------------------------------------
+
+  async getJob(jobId: number) {
+    const job = await Job.find(jobId)
+    if (!job) return null
+
+    const result: Record<string, unknown> = {
+      job_id: job.jobId,
+      submission_id: job.submissionId,
+      status: job.status,
+      docker_image_tag: job.dockerImageTag,
+      priority: job.priority,
+      estimated_runtime: job.estimatedRuntime,
+      actual_runtime: job.actualRuntime,
+      submitted_at: job.submittedAt,
+      started_at: job.startedAt,
+      completed_at: job.completedAt,
+      retry_count: job.retryCount,
+      queue_position: null,
+      estimated_wait_seconds: null,
+      result: null,
+    }
+
+    if (job.status === 'completed') {
+      await job.load('result')
+      if (job.result) {
+        result.result = {
+          correctness_score: job.result.correctnessScore,
+          tool_score: job.result.toolScore,
+          comments: job.result.comments,
+          comment_format: job.result.commentFormat,
+          test_output: job.result.testOutput,
+          exit_code: job.result.exitCode,
+          runtime_ms: job.result.runtimeMs,
+        }
+      }
+    }
+
+    if (job.status === 'pending') {
+      const { position, estimatedWait } = await this.getQueuePosition(jobId)
+      result.queue_position = position
+      result.estimated_wait_seconds = estimatedWait
+    }
+
+    return result
+  }
+
+  async getJobResults(jobId: number) {
+    const job = await Job.find(jobId)
+    if (!job) return { found: false, status: null, data: null }
+
+    if (job.status !== 'completed') {
+      return { found: true, status: job.status, data: null }
+    }
+
+    const jobResult = await JobResult.findBy('job_id', jobId)
+    if (!jobResult) return { found: true, status: job.status, data: null }
+
+    return {
+      found: true,
+      status: job.status,
+      data: {
+        job_id: jobId,
+        correctness_score: jobResult.correctnessScore,
+        tool_score: jobResult.toolScore,
+        comments: jobResult.comments,
+        comment_format: jobResult.commentFormat,
+        test_output: jobResult.testOutput,
+        exit_code: jobResult.exitCode,
+        runtime_ms: jobResult.runtimeMs,
+      },
+    }
+  }
+
+  async listJobs(filters: ListFilters, pagination: Pagination) {
+    const query = Job.query().orderBy('submitted_at', 'desc')
+
+    if (filters.submission_id !== undefined) query.where('submission_id', filters.submission_id)
+    if (filters.user_id !== undefined) query.where('user_id', filters.user_id)
+    if (filters.status !== undefined) query.where('status', filters.status)
+    if (filters.docker_image_tag !== undefined) query.where('docker_image_tag', filters.docker_image_tag)
+
+    const countResult = await query.clone().clearOrder().count('* as total')
+    const totalCount = Number(countResult[0].$extras.total)
+
+    const jobs = await query.offset(pagination.offset).limit(pagination.limit)
+
+    return {
+      total: totalCount,
+      limit: pagination.limit,
+      offset: pagination.offset,
+      jobs: jobs.map((job) => ({
+        job_id: job.jobId,
+        submission_id: job.submissionId,
+        status: job.status,
+        docker_image_tag: job.dockerImageTag,
+        priority: job.priority,
+        submitted_at: job.submittedAt,
+        completed_at: job.completedAt,
+        actual_runtime: job.actualRuntime,
+      })),
+    }
+  }
+
+  async cancelJob(jobId: number) {
+    const job = await Job.find(jobId)
+    if (!job) return { found: false, conflict: false, data: null }
+
+    if (job.status !== 'pending') {
+      return { found: true, conflict: true, data: null }
+    }
+
+    job.status = 'cancelled'
+    await job.save()
+
+    return {
+      found: true,
+      conflict: false,
+      data: { job_id: job.jobId, status: job.status },
+    }
+  }
+
+  async getQueuePosition(jobId: number) {
+    const job = await Job.find(jobId)
+    if (!job) return { position: null, estimatedWait: null }
+
+    const jobsAhead = await this.countJobsAhead(job)
+    const position = jobsAhead + 1
+
+    const avgResult = (await db.rawQuery(
+      `SELECT AVG(actual_runtime) as avg_runtime FROM jobs
+       WHERE status = 'completed' AND completed_at > NOW() - INTERVAL '1 hour'`
+    )) as unknown as RawQueryResult<{ avg_runtime: number | null }>
+
+    const avgSeconds = avgResult.rows[0]?.avg_runtime ?? job.estimatedRuntime
+    const estimatedWait = position * Number(avgSeconds)
+
+    return { position, estimatedWait }
+  }
 }
 
-const jobLifecycleService = new JobLifecycleService()
-export default jobLifecycleService
+export default new JobLifecycleService()

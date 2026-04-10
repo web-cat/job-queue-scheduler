@@ -1,7 +1,8 @@
 import { defineConfig } from '@adonisjs/auth'
 import { tokensGuard, tokensUserProvider } from '@adonisjs/auth/access_tokens'
+import type { InferAuthenticators, InferAuthEvents } from '@adonisjs/auth/types'
 
-export default defineConfig({
+const authConfig = defineConfig({
   default: 'api',
   guards: {
     api: tokensGuard({
@@ -12,3 +13,10 @@ export default defineConfig({
     }),
   },
 })
+
+export default authConfig
+
+declare module '@adonisjs/auth/types' {
+  interface Authenticators extends InferAuthenticators<typeof authConfig> {}
+  interface AuthEvents extends InferAuthEvents<Authenticators> {}
+}
