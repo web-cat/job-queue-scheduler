@@ -5,15 +5,15 @@ export default class extends BaseSchema {
 
   async up() {
     this.schema.createTable(this.tableName, (table) => {
-      table.bigIncrements('id').notNullable()
+      table.bigIncrements('id')
       table.string('docker_image_tag', 255).notNullable().unique()
       table.string('display_name', 255).nullable()
-      table.integer('timeout_seconds').notNullable()
-      table.integer('memory_limit_mb').notNullable()
-      table.integer('cpu_limit_millicores').notNullable()
+      table.integer('timeout_seconds').notNullable().defaultTo(30)
+      table.integer('memory_limit_mb').notNullable().defaultTo(512)
+      table.integer('cpu_limit_millicores').notNullable().defaultTo(1000)
       table.integer('max_retries').notNullable().defaultTo(3)
-      table.integer('default_priority').notNullable().defaultTo(5)
-      table.double('default_estimated_runtime').notNullable()
+      table.specificType('default_priority', 'SMALLINT').notNullable().defaultTo(5)
+      table.double('default_estimated_runtime').notNullable().defaultTo(15.0)
       table.double('avg_runtime_seconds').nullable()
       table.integer('total_completed_jobs').notNullable().defaultTo(0)
       table.boolean('is_active').notNullable().defaultTo(true)
@@ -23,6 +23,6 @@ export default class extends BaseSchema {
   }
 
   async down() {
-    this.schema.dropTableIfExists(this.tableName)
+    this.schema.dropTable(this.tableName)
   }
 }
