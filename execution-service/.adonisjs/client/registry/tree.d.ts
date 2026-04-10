@@ -8,4 +8,8 @@ export interface ApiDefinition {
     results: typeof routes['jobs.results']
     destroy: typeof routes['jobs.destroy']
   }
+  queue: {
+    status: typeof routes['queue.status']
+    position: typeof routes['queue.position']
+  }
 }
