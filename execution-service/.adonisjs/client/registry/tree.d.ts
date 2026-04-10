@@ -12,4 +12,15 @@ export interface ApiDefinition {
     status: typeof routes['queue.status']
     position: typeof routes['queue.position']
   }
+  config: {
+    index: typeof routes['config.index']
+    update: typeof routes['config.update']
+  }
+  metrics: {
+    overview: typeof routes['metrics.overview']
+    imageBreakdown: typeof routes['metrics.image_breakdown']
+  }
+  health: {
+    check: typeof routes['health.check']
+  }
 }

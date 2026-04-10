@@ -4,8 +4,11 @@
  */
 
 export const controllers = {
-  Jobs: () => import('#controllers/jobs_controller'),
   AccessToken: () => import('#controllers/access_token_controller'),
+  Config: () => import('#controllers/config_controller'),
+  Health: () => import('#controllers/health_controller'),
+  Jobs: () => import('#controllers/jobs_controller'),
+  Metrics: () => import('#controllers/metrics_controller'),
   NewAccount: () => import('#controllers/new_account_controller'),
   Profile: () => import('#controllers/profile_controller'),
   Queue: () => import('#controllers/queue_controller'),
