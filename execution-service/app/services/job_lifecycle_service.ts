@@ -1,7 +1,22 @@
 import db from '@adonisjs/lucid/services/db'
+import { errors } from '@adonisjs/http-server'
+import ImageConfig from '#models/image_config'
 import Job from '#models/job'
 import JobResult from '#models/job_result'
+import fileService from '#services/file_service'
+import type { MultipartFile } from '@adonisjs/core/bodyparser'
 import type { JobStatus } from '#models/job'
+
+type SubmitJobPayload = {
+  docker_image_tag: string
+  submission_id: number
+  callback_url?: string
+  user_id?: number
+  course_id?: number
+  assignment_name?: string
+  priority?: number
+  files: MultipartFile[]
+}
 
 interface ListFilters {
   submission_id?: number
@@ -19,7 +34,125 @@ interface RawQueryResult<T> {
   rows: T[]
 }
 
-export class JobLifecycleService {
+class JobLifecycleService {
+  // ---------------------------------------------------------------------------
+  // Internal helpers
+  // ---------------------------------------------------------------------------
+
+  private getHrrnScore(job: Pick<Job, 'submittedAt' | 'estimatedRuntime'>): number {
+    const ageSeconds = Math.max(0, (Date.now() - job.submittedAt.toJSDate().getTime()) / 1000)
+    const runtime =
+      Number.isFinite(job.estimatedRuntime) && job.estimatedRuntime > 0 ? job.estimatedRuntime : 1
+    return (ageSeconds + runtime) / runtime
+  }
+
+  private async countJobsAhead(job: Job): Promise<number> {
+    const currentScore = this.getHrrnScore(job)
+    const query = await db
+      .from('jobs')
+      .where('status', 'pending')
+      .whereNot('job_id', job.jobId)
+      .where('estimated_runtime', '>', 0)
+      .whereRaw(
+        '((EXTRACT(EPOCH FROM (NOW() - submitted_at)) + estimated_runtime) / estimated_runtime) > ?',
+        [currentScore]
+      )
+      .count('* as total')
+      .first()
+
+    return Number(query?.total || 0)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Task 3: Job submission
+  // ---------------------------------------------------------------------------
+
+  async submitJob(payload: SubmitJobPayload) {
+    const imageConfig = await ImageConfig.query()
+      .where('docker_image_tag', payload.docker_image_tag)
+      .first()
+
+    if (!imageConfig) {
+      throw errors.E_HTTP_EXCEPTION.invoke(
+        {
+          error: {
+            code: 'IMAGE_CONFIG_NOT_FOUND',
+            message: `Docker image tag ${payload.docker_image_tag} is not configured`,
+          },
+        },
+        404
+      )
+    }
+
+    if (!imageConfig.isActive) {
+      throw errors.E_HTTP_EXCEPTION.invoke(
+        {
+          error: {
+            code: 'IMAGE_CONFIG_INACTIVE',
+            message: `Docker image tag ${payload.docker_image_tag} is currently inactive`,
+          },
+        },
+        409
+      )
+    }
+
+    const estimatedRuntime = imageConfig.avgRuntimeSeconds ?? imageConfig.defaultEstimatedRuntime
+    if (!Number.isFinite(estimatedRuntime) || estimatedRuntime <= 0) {
+      throw errors.E_HTTP_EXCEPTION.invoke(
+        {
+          error: {
+            code: 'IMAGE_CONFIG_INVALID_RUNTIME',
+            message: `Docker image tag ${payload.docker_image_tag} has invalid estimated runtime`,
+          },
+        },
+        500
+      )
+    }
+
+    // Create first so the DB allocates job_id without relying on hardcoded sequence names.
+    const job = await Job.create({
+      submissionId: payload.submission_id,
+      dockerImageTag: payload.docker_image_tag,
+      status: 'pending',
+      priority: payload.priority ?? imageConfig.defaultPriority,
+      sourcePath: 'PENDING_UPLOAD',
+      callbackUrl: payload.callback_url ?? null,
+      resultDelivered: false,
+      estimatedRuntime,
+      imageConfigId: imageConfig.id,
+      userId: payload.user_id ?? null,
+      courseId: payload.course_id ?? null,
+      assignmentName: payload.assignment_name ?? null,
+    })
+
+    try {
+      const sourcePath = await fileService.storeSubmissionFiles(job.jobId, payload.files)
+      job.sourcePath = sourcePath
+      await job.save()
+
+      const persistedJob = await Job.findOrFail(job.jobId)
+      const jobsAhead = await this.countJobsAhead(persistedJob)
+
+      return {
+        job_id: Number(job.jobId),
+        submission_id: job.submissionId,
+        status: job.status,
+        docker_image_tag: job.dockerImageTag,
+        estimated_runtime: job.estimatedRuntime,
+        queue_position: jobsAhead + 1,
+        submitted_at: job.submittedAt,
+      }
+    } catch (error) {
+      await fileService.cleanupSubmissionDirectory(job.jobId)
+      await job.delete()
+      throw error
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Task 4: Job status & results
+  // ---------------------------------------------------------------------------
+
   async getJob(jobId: number) {
     const job = await Job.find(jobId)
     if (!job) return null
@@ -95,18 +228,10 @@ export class JobLifecycleService {
   async listJobs(filters: ListFilters, pagination: Pagination) {
     const query = Job.query().orderBy('submitted_at', 'desc')
 
-    if (filters.submission_id !== undefined) {
-      query.where('submission_id', filters.submission_id)
-    }
-    if (filters.user_id !== undefined) {
-      query.where('user_id', filters.user_id)
-    }
-    if (filters.status !== undefined) {
-      query.where('status', filters.status)
-    }
-    if (filters.docker_image_tag !== undefined) {
-      query.where('docker_image_tag', filters.docker_image_tag)
-    }
+    if (filters.submission_id !== undefined) query.where('submission_id', filters.submission_id)
+    if (filters.user_id !== undefined) query.where('user_id', filters.user_id)
+    if (filters.status !== undefined) query.where('status', filters.status)
+    if (filters.docker_image_tag !== undefined) query.where('docker_image_tag', filters.docker_image_tag)
 
     const countResult = await query.clone().clearOrder().count('* as total')
     const totalCount = Number(countResult[0].$extras.total)
@@ -152,27 +277,9 @@ export class JobLifecycleService {
     const job = await Job.find(jobId)
     if (!job) return { position: null, estimatedWait: null }
 
-    // HRRN score: (wait_time + estimated_runtime) / estimated_runtime
-    const hrrnResult = (await db.rawQuery(
-      `SELECT (EXTRACT(EPOCH FROM (NOW() - submitted_at)) + estimated_runtime) / estimated_runtime AS hrrn_score
-       FROM jobs WHERE job_id = ?`,
-      [jobId]
-    )) as unknown as RawQueryResult<{ hrrn_score: number }>
+    const jobsAhead = await this.countJobsAhead(job)
+    const position = jobsAhead + 1
 
-    const myScore = hrrnResult.rows[0]?.hrrn_score ?? 0
-
-    // Count pending jobs with higher HRRN score (they are ahead in queue)
-    const higherCountResult = (await db.rawQuery(
-      `SELECT COUNT(*) as count FROM jobs
-       WHERE status = 'pending'
-         AND job_id != ?
-         AND (EXTRACT(EPOCH FROM (NOW() - submitted_at)) + estimated_runtime) / estimated_runtime > ?`,
-      [jobId, myScore]
-    )) as unknown as RawQueryResult<{ count: string }>
-
-    const position = Number(higherCountResult.rows[0]?.count ?? 0) + 1
-
-    // Estimated wait = position × avg recent execution time
     const avgResult = (await db.rawQuery(
       `SELECT AVG(actual_runtime) as avg_runtime FROM jobs
        WHERE status = 'completed' AND completed_at > NOW() - INTERVAL '1 hour'`
