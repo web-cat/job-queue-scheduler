@@ -1,15 +1,29 @@
 import { test } from '@japa/runner'
 import db from '@adonisjs/lucid/services/db'
-import { access } from 'node:fs/promises'
+import { access, rm } from 'node:fs/promises'
 import path from 'node:path'
 import ImageConfig from '#models/image_config'
 
 test.group('Job submission endpoint', (group) => {
+  const cleanupSubmissionDirs = async () => {
+    const jobs = await db.from('jobs').where('submission_id', '>=', 900000).select('source_path')
+
+    for (const job of jobs) {
+      const sourcePath = job.source_path as string | null
+      if (!sourcePath) continue
+
+      const jobDir = path.dirname(sourcePath)
+      await rm(jobDir, { recursive: true, force: true })
+    }
+  }
+
   group.each.setup(async () => {
+    await cleanupSubmissionDirs()
     await db.from('jobs').where('submission_id', '>=', 900000).delete()
   })
 
   group.each.teardown(async () => {
+    await cleanupSubmissionDirs()
     await db.from('jobs').where('submission_id', '>=', 900000).delete()
   })
 

@@ -39,22 +39,6 @@ class JobLifecycleService {
   // Internal helpers
   // ---------------------------------------------------------------------------
 
-  private async reserveJobId(): Promise<number> {
-    const result = (await db.rawQuery("SELECT nextval('jobs_job_id_seq') AS job_id")) as {
-      rows: Array<{ job_id: string }>
-    }
-    const jobId = Number(result.rows[0]?.job_id)
-
-    if (!jobId) {
-      throw errors.E_HTTP_EXCEPTION.invoke(
-        { error: { code: 'JOB_ID_RESERVATION_FAILED', message: 'Unable to reserve a job id' } },
-        500
-      )
-    }
-
-    return jobId
-  }
-
   private getHrrnScore(job: Pick<Job, 'submittedAt' | 'estimatedRuntime'>): number {
     const ageSeconds = Math.max(0, (Date.now() - job.submittedAt.toJSDate().getTime()) / 1000)
     return (ageSeconds + job.estimatedRuntime) / job.estimatedRuntime
@@ -66,6 +50,7 @@ class JobLifecycleService {
       .from('jobs')
       .where('status', 'pending')
       .whereNot('job_id', job.jobId)
+      .where('estimated_runtime', '>', 0)
       .whereRaw(
         '((EXTRACT(EPOCH FROM (NOW() - submitted_at)) + estimated_runtime) / estimated_runtime) > ?',
         [currentScore]
@@ -109,27 +94,39 @@ class JobLifecycleService {
       )
     }
 
-    const reservedJobId = await this.reserveJobId()
-    
-    try {
-      const sourcePath = await fileService.storeSubmissionFiles(reservedJobId, payload.files)
-      const estimatedRuntime = imageConfig.avgRuntimeSeconds ?? imageConfig.defaultEstimatedRuntime
+    const estimatedRuntime = imageConfig.avgRuntimeSeconds ?? imageConfig.defaultEstimatedRuntime
+    if (!Number.isFinite(estimatedRuntime) || estimatedRuntime <= 0) {
+      throw errors.E_HTTP_EXCEPTION.invoke(
+        {
+          error: {
+            code: 'IMAGE_CONFIG_INVALID_RUNTIME',
+            message: `Docker image tag ${payload.docker_image_tag} has invalid estimated runtime`,
+          },
+        },
+        500
+      )
+    }
 
-      const job = await Job.create({
-        jobId: reservedJobId,
-        submissionId: payload.submission_id,
-        dockerImageTag: payload.docker_image_tag,
-        status: 'pending',
-        priority: payload.priority ?? imageConfig.defaultPriority,
-        sourcePath,
-        callbackUrl: payload.callback_url ?? null,
-        resultDelivered: false,
-        estimatedRuntime,
-        imageConfigId: imageConfig.id,
-        userId: payload.user_id ?? null,
-        courseId: payload.course_id ?? null,
-        assignmentName: payload.assignment_name ?? null,
-      })
+    // Create first so the DB allocates job_id without relying on hardcoded sequence names.
+    const job = await Job.create({
+      submissionId: payload.submission_id,
+      dockerImageTag: payload.docker_image_tag,
+      status: 'pending',
+      priority: payload.priority ?? imageConfig.defaultPriority,
+      sourcePath: 'PENDING_UPLOAD',
+      callbackUrl: payload.callback_url ?? null,
+      resultDelivered: false,
+      estimatedRuntime,
+      imageConfigId: imageConfig.id,
+      userId: payload.user_id ?? null,
+      courseId: payload.course_id ?? null,
+      assignmentName: payload.assignment_name ?? null,
+    })
+
+    try {
+      const sourcePath = await fileService.storeSubmissionFiles(job.jobId, payload.files)
+      job.sourcePath = sourcePath
+      await job.save()
 
       const persistedJob = await Job.findOrFail(job.jobId)
       const jobsAhead = await this.countJobsAhead(persistedJob)
@@ -144,9 +141,8 @@ class JobLifecycleService {
         submitted_at: job.submittedAt,
       }
     } catch (error) {
-      // Cleanup submission directory if job creation fails
-      // This prevents orphaned directories when Job.create throws
-      await fileService.cleanupSubmissionDirectory(reservedJobId)
+      await fileService.cleanupSubmissionDirectory(job.jobId)
+      await job.delete()
       throw error
     }
   }

@@ -136,6 +136,8 @@ class FileService {
 
       return inputPath
     } catch (error: any) {
+      await this.cleanupSubmissionDirectory(jobId)
+
       if (error?.code === 'ENOSPC') {
         throw errors.E_HTTP_EXCEPTION.invoke(
           { error: { code: 'INSUFFICIENT_STORAGE', message: 'Disk is full while storing upload' } },
