@@ -8,6 +8,8 @@
 */
 
 import router from '@adonisjs/core/services/router'
+
+const ImagesController = () => import('#controllers/images_controller')
 import { middleware } from '#start/kernel'
 
 const JobsController = () => import('#controllers/jobs_controller')
@@ -20,6 +22,13 @@ router.get('/', () => {
   return { hello: 'world' }
 })
 
+// Image config CRUD (Task 6)
+router.get('/api/v1/images', [ImagesController, 'index'])
+router.post('/api/v1/images', [ImagesController, 'store'])
+router.get('/api/v1/images/:id/stats', [ImagesController, 'stats'])
+router.get('/api/v1/images/:id', [ImagesController, 'show'])
+router.put('/api/v1/images/:id', [ImagesController, 'update'])
+router.delete('/api/v1/images/:id', [ImagesController, 'destroy'])
 // Job submission (Task 3)
 router.post('/api/v1/jobs', [JobsController, 'store'])
 

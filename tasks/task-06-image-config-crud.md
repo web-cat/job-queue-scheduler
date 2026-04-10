@@ -1,7 +1,7 @@
 # Task 6: Image Config CRUD Endpoints (Admin)
 
-**Status:** Not Started
-**Assignee:** (pick up)
+**Status:** Completed
+**Assignee:** Sy
 **Priority:** MEDIUM
 **Dependencies:** Task 1 (schema must exist)
 
