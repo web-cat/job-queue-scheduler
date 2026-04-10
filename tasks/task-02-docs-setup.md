@@ -1,7 +1,7 @@
 # Task 2: CLAUDE.md + /docs Setup
 
-**Status:** Not Started
-**Assignee:** (pick up)
+**Status:** Completed
+**Assignee:** Tomas
 **Priority:** HIGH — gives all teammates' Claude Code sessions full context
 **Dependencies:** None (can be done in parallel with Task 1)
 

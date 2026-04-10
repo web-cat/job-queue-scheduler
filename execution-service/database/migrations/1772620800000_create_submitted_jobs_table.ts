@@ -4,6 +4,11 @@ export default class extends BaseSchema {
   protected tableName = 'submitted_jobs'
 
   async up() {
+    /** Legacy Postgres-only tables; skipped on SQLite (see drop_old_tables + new jobs schema). */
+    if (this.db.dialect.name !== 'postgres') {
+      return
+    }
+
     this.schema.raw(
       "CREATE TYPE submitted_job_status AS ENUM ('pending', 'queued', 'running', 'completed', 'failed')"
     )
@@ -32,6 +37,8 @@ export default class extends BaseSchema {
 
   async down() {
     this.schema.dropTableIfExists(this.tableName)
-    this.schema.raw('DROP TYPE IF EXISTS submitted_job_status')
+    if (this.db.dialect.name === 'postgres') {
+      this.schema.raw('DROP TYPE IF EXISTS submitted_job_status')
+    }
   }
 }
