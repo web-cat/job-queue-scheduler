@@ -42,6 +42,36 @@ const routes = {
     tokens: [{"old":"/api/v1/queue/position/:id","type":0,"val":"api","end":""},{"old":"/api/v1/queue/position/:id","type":0,"val":"v1","end":""},{"old":"/api/v1/queue/position/:id","type":0,"val":"queue","end":""},{"old":"/api/v1/queue/position/:id","type":0,"val":"position","end":""},{"old":"/api/v1/queue/position/:id","type":1,"val":"id","end":""}],
     types: placeholder as Registry['queue.position']['types'],
   },
+  'config.index': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/config',
+    tokens: [{"old":"/api/v1/config","type":0,"val":"api","end":""},{"old":"/api/v1/config","type":0,"val":"v1","end":""},{"old":"/api/v1/config","type":0,"val":"config","end":""}],
+    types: placeholder as Registry['config.index']['types'],
+  },
+  'config.update': {
+    methods: ["PUT"],
+    pattern: '/api/v1/config/:key',
+    tokens: [{"old":"/api/v1/config/:key","type":0,"val":"api","end":""},{"old":"/api/v1/config/:key","type":0,"val":"v1","end":""},{"old":"/api/v1/config/:key","type":0,"val":"config","end":""},{"old":"/api/v1/config/:key","type":1,"val":"key","end":""}],
+    types: placeholder as Registry['config.update']['types'],
+  },
+  'metrics.overview': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/metrics/overview',
+    tokens: [{"old":"/api/v1/metrics/overview","type":0,"val":"api","end":""},{"old":"/api/v1/metrics/overview","type":0,"val":"v1","end":""},{"old":"/api/v1/metrics/overview","type":0,"val":"metrics","end":""},{"old":"/api/v1/metrics/overview","type":0,"val":"overview","end":""}],
+    types: placeholder as Registry['metrics.overview']['types'],
+  },
+  'metrics.image_breakdown': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/metrics/images',
+    tokens: [{"old":"/api/v1/metrics/images","type":0,"val":"api","end":""},{"old":"/api/v1/metrics/images","type":0,"val":"v1","end":""},{"old":"/api/v1/metrics/images","type":0,"val":"metrics","end":""},{"old":"/api/v1/metrics/images","type":0,"val":"images","end":""}],
+    types: placeholder as Registry['metrics.image_breakdown']['types'],
+  },
+  'health.check': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/health',
+    tokens: [{"old":"/api/v1/health","type":0,"val":"api","end":""},{"old":"/api/v1/health","type":0,"val":"v1","end":""},{"old":"/api/v1/health","type":0,"val":"health","end":""}],
+    types: placeholder as Registry['health.check']['types'],
+  },
 } as const satisfies Record<string, AdonisEndpoint>
 
 export { routes }
