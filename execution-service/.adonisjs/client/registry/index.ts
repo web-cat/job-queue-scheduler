@@ -6,6 +6,30 @@ import type { ApiDefinition } from './tree.d.ts'
 const placeholder: any = {}
 
 const routes = {
+  'jobs.index': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/jobs',
+    tokens: [{"old":"/api/v1/jobs","type":0,"val":"api","end":""},{"old":"/api/v1/jobs","type":0,"val":"v1","end":""},{"old":"/api/v1/jobs","type":0,"val":"jobs","end":""}],
+    types: placeholder as Registry['jobs.index']['types'],
+  },
+  'jobs.show': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/jobs/:id',
+    tokens: [{"old":"/api/v1/jobs/:id","type":0,"val":"api","end":""},{"old":"/api/v1/jobs/:id","type":0,"val":"v1","end":""},{"old":"/api/v1/jobs/:id","type":0,"val":"jobs","end":""},{"old":"/api/v1/jobs/:id","type":1,"val":"id","end":""}],
+    types: placeholder as Registry['jobs.show']['types'],
+  },
+  'jobs.results': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/jobs/:id/results',
+    tokens: [{"old":"/api/v1/jobs/:id/results","type":0,"val":"api","end":""},{"old":"/api/v1/jobs/:id/results","type":0,"val":"v1","end":""},{"old":"/api/v1/jobs/:id/results","type":0,"val":"jobs","end":""},{"old":"/api/v1/jobs/:id/results","type":1,"val":"id","end":""},{"old":"/api/v1/jobs/:id/results","type":0,"val":"results","end":""}],
+    types: placeholder as Registry['jobs.results']['types'],
+  },
+  'jobs.destroy': {
+    methods: ["DELETE"],
+    pattern: '/api/v1/jobs/:id',
+    tokens: [{"old":"/api/v1/jobs/:id","type":0,"val":"api","end":""},{"old":"/api/v1/jobs/:id","type":0,"val":"v1","end":""},{"old":"/api/v1/jobs/:id","type":0,"val":"jobs","end":""},{"old":"/api/v1/jobs/:id","type":1,"val":"id","end":""}],
+    types: placeholder as Registry['jobs.destroy']['types'],
+  },
   'queue.status': {
     methods: ["GET","HEAD"],
     pattern: '/api/v1/queue/status',

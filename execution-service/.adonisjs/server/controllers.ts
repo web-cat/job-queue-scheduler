@@ -4,6 +4,7 @@
  */
 
 export const controllers = {
+  Jobs: () => import('#controllers/jobs_controller'),
   AccessToken: () => import('#controllers/access_token_controller'),
   NewAccount: () => import('#controllers/new_account_controller'),
   Profile: () => import('#controllers/profile_controller'),
