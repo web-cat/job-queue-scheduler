@@ -7,7 +7,7 @@ export class MetricsService {
         COUNT(*) FILTER (WHERE status = 'pending') AS total_pending,
         COUNT(*) FILTER (WHERE status = 'processing') AS total_processing,
         COUNT(*) FILTER (WHERE status = 'completed' AND completed_at >= NOW() - INTERVAL '24 hours') AS total_completed_24h,
-        COUNT(*) FILTER (WHERE status = 'failed' AND updated_at >= NOW() - INTERVAL '24 hours') AS total_failed_24h,
+        COUNT(*) FILTER (WHERE status = 'failed' AND completed_at >= NOW() - INTERVAL '24 hours') AS total_failed_24h,
         AVG(EXTRACT(EPOCH FROM (started_at - submitted_at))) FILTER (WHERE status = 'completed' AND completed_at >= NOW() - INTERVAL '24 hours') AS avg_wait_seconds_24h,
         AVG(actual_runtime) FILTER (WHERE status = 'completed' AND completed_at >= NOW() - INTERVAL '24 hours') AS avg_execution_seconds_24h,
         EXTRACT(EPOCH FROM (NOW() - MIN(submitted_at) FILTER (WHERE status = 'pending'))) AS oldest_pending_age_seconds
