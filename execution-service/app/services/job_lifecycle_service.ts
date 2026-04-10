@@ -41,7 +41,9 @@ class JobLifecycleService {
 
   private getHrrnScore(job: Pick<Job, 'submittedAt' | 'estimatedRuntime'>): number {
     const ageSeconds = Math.max(0, (Date.now() - job.submittedAt.toJSDate().getTime()) / 1000)
-    return (ageSeconds + job.estimatedRuntime) / job.estimatedRuntime
+    const runtime =
+      Number.isFinite(job.estimatedRuntime) && job.estimatedRuntime > 0 ? job.estimatedRuntime : 1
+    return (ageSeconds + runtime) / runtime
   }
 
   private async countJobsAhead(job: Job): Promise<number> {
