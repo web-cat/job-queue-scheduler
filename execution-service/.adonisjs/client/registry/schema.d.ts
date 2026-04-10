@@ -79,4 +79,64 @@ export interface Registry {
       errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/queue_controller').default['position']>>>
     }
   }
+  'config.index': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/config'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/config_controller').default['index']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/config_controller').default['index']>>>
+    }
+  }
+  'config.update': {
+    methods: ["PUT"]
+    pattern: '/api/v1/config/:key'
+    types: {
+      body: {}
+      paramsTuple: [ParamValue]
+      params: { key: ParamValue }
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/config_controller').default['update']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/config_controller').default['update']>>>
+    }
+  }
+  'metrics.overview': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/metrics/overview'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/metrics_controller').default['overview']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/metrics_controller').default['overview']>>>
+    }
+  }
+  'metrics.image_breakdown': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/metrics/images'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/metrics_controller').default['imageBreakdown']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/metrics_controller').default['imageBreakdown']>>>
+    }
+  }
+  'health.check': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/health'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/health_controller').default['check']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/health_controller').default['check']>>>
+    }
+  }
 }
