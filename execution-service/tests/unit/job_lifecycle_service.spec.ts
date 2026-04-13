@@ -42,30 +42,6 @@ async function createJob(
   })
 }
 
-test.group('JobLifecycleService — markProcessing', (group) => {
-  group.each.setup(async () => {
-    await db.from('jobs').delete()
-    await db.from('image_configs').delete()
-  })
-
-  test('marks job as processing and sets worker pod and started_at', async ({ assert }) => {
-    const cfg = await createImageConfig()
-    const job = await createJob(cfg.id)
-
-    const result = await jobLifecycleService.markProcessing(job.jobId, 'pod-abc123')
-
-    assert.isNotNull(result)
-    assert.equal(result!.status, 'processing')
-    assert.equal(result!.workerPodName, 'pod-abc123')
-    assert.isNotNull(result!.startedAt)
-  })
-
-  test('returns null for non-existent job', async ({ assert }) => {
-    const result = await jobLifecycleService.markProcessing(999999, 'pod-x')
-    assert.isNull(result)
-  })
-})
-
 test.group('JobLifecycleService — markCompleted', (group) => {
   group.each.setup(async () => {
     await db.from('job_results').delete()

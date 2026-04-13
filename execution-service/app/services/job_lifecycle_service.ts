@@ -321,18 +321,6 @@ class JobLifecycleService {
   // Task 9: Job lifecycle state transitions
   // ---------------------------------------------------------------------------
 
-  async markProcessing(jobId: number, workerPodName: string) {
-    const job = await Job.find(jobId)
-    if (!job) return null
-
-    job.status = 'processing'
-    job.startedAt = DateTime.now()
-    job.workerPodName = workerPodName
-    await job.save()
-
-    return job
-  }
-
   async markCompleted(jobId: number, results: MarkCompletedResults, actualRuntime: number) {
     const job = await Job.find(jobId)
 
