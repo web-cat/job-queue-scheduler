@@ -50,7 +50,7 @@ function pendingJob(overrides: JobCreateAttrs = {}) {
   }
 }
 
-test.group('SchedulerService', (group) => {
+test.group('SchedulerService — HRRN', (group) => {
   let imageConfigId: number
 
   group.each.setup(async () => {
@@ -68,7 +68,7 @@ test.group('SchedulerService', (group) => {
     })
   })
 
-  test('HRRN: dequeues the job with higher response ratio first', async ({ assert }) => {
+  test('dequeues the job with higher response ratio first', async ({ assert }) => {
     const now = DateTime.now()
 
     // Job A: waiting 60s, burst 10s → ratio = (60+10)/10 = 7.0
@@ -86,100 +86,19 @@ test.group('SchedulerService', (group) => {
     })
 
     const service = new SchedulerService()
-    await service.initialize()
-
     const first = await service.dequeueNext('worker-1')
+
     assert.isNotNull(first)
-    // Job A submitted 60s ago, so it has the higher HRRN score
     assert.approximately(first!.hrrnScoreAtDequeue!, 7.0, 0.5)
   })
 
-  test('FIFO: dequeues the earliest submitted job first', async ({ assert }) => {
-    const now = DateTime.now()
-
-    const early = await Job.create({
-      ...pendingJob({ imageConfigId }),
-      submittedAt: now.minus({ seconds: 60 }),
-      estimatedRuntime: 5,
-    })
-
-    await Job.create({
-      ...pendingJob({ imageConfigId }),
-      submittedAt: now.minus({ seconds: 10 }),
-      estimatedRuntime: 100,
-    })
-
-    await SystemSetting.query().where('key', 'scheduler_strategy').update({ value: 'FIFO' })
-
+  test('empty queue returns null', async ({ assert }) => {
     const service = new SchedulerService()
-    await service.initialize()
-
-    const first = await service.dequeueNext('worker-1')
-    assert.isNotNull(first)
-    assert.equal(first!.jobId, early.jobId)
-  })
-
-  test('Priority: dequeues highest priority first, ties broken by submitted_at', async ({
-    assert,
-  }) => {
-    const now = DateTime.now()
-
-    await Job.create({
-      ...pendingJob({ imageConfigId }),
-      priority: 3,
-      submittedAt: now.minus({ seconds: 100 }),
-    })
-
-    const high = await Job.create({
-      ...pendingJob({ imageConfigId }),
-      priority: 9,
-      submittedAt: now.minus({ seconds: 10 }),
-    })
-
-    await SystemSetting.query().where('key', 'scheduler_strategy').update({ value: 'PRIORITY' })
-
-    const service = new SchedulerService()
-    await service.initialize()
-
-    const first = await service.dequeueNext('worker-1')
-    assert.isNotNull(first)
-    assert.equal(first!.jobId, high.jobId)
-  })
-
-  test('Priority: breaks ties by submitted_at ASC', async ({ assert }) => {
-    const now = DateTime.now()
-
-    const older = await Job.create({
-      ...pendingJob({ imageConfigId }),
-      priority: 7,
-      submittedAt: now.minus({ seconds: 50 }),
-    })
-
-    await Job.create({
-      ...pendingJob({ imageConfigId }),
-      priority: 7,
-      submittedAt: now.minus({ seconds: 5 }),
-    })
-
-    await SystemSetting.query().where('key', 'scheduler_strategy').update({ value: 'PRIORITY' })
-
-    const service = new SchedulerService()
-    await service.initialize()
-
-    const first = await service.dequeueNext('worker-1')
-    assert.isNotNull(first)
-    assert.equal(first!.jobId, older.jobId)
-  })
-
-  test('Empty queue returns null', async ({ assert }) => {
-    const service = new SchedulerService()
-    await service.initialize()
-
     const result = await service.dequeueNext('worker-1')
     assert.isNull(result)
   })
 
-  test('Concurrent dequeue: each call gets a different job (SKIP LOCKED)', async ({ assert }) => {
+  test('concurrent dequeue: each call gets a different job (SKIP LOCKED)', async ({ assert }) => {
     const now = DateTime.now()
 
     for (let i = 0; i < 5; i++) {
@@ -190,8 +109,6 @@ test.group('SchedulerService', (group) => {
     }
 
     const service = new SchedulerService()
-    await service.initialize()
-
     const results = await Promise.all([
       service.dequeueNext('worker-1'),
       service.dequeueNext('worker-2'),
@@ -206,40 +123,5 @@ test.group('SchedulerService', (group) => {
 
     assert.equal(uniqueIds.size, ids.length, 'Each concurrent call should get a unique job')
     assert.equal(dequeued.length, 5)
-  })
-
-  test('Strategy switching: changing system_settings takes effect within refresh interval', async ({
-    assert,
-  }) => {
-    const now = DateTime.now()
-
-    // Two jobs — oldest submitted first
-    const older = await Job.create({
-      ...pendingJob({ imageConfigId }),
-      submittedAt: now.minus({ seconds: 100 }),
-      estimatedRuntime: 100, // low HRRN ratio despite long wait
-      priority: 3,
-    })
-
-    await Job.create({
-      ...pendingJob({ imageConfigId }),
-      submittedAt: now.minus({ seconds: 1 }),
-      estimatedRuntime: 1, // HRRN: (1+1)/1 = 2.0 vs older: (100+100)/100 = 2.0 — same; FIFO picks older
-      priority: 9,
-    })
-
-    const service = new SchedulerService()
-    await service.initialize() // starts with HRRN
-
-    // Switch to FIFO
-    await SystemSetting.query().where('key', 'scheduler_strategy').update({ value: 'FIFO' })
-
-    // Force refresh by backdating last refresh
-    ;(service as any).lastRefreshedAt = 0
-
-    const first = await service.dequeueNext('worker-1')
-    assert.isNotNull(first)
-    // FIFO picks the oldest submitted job
-    assert.equal(first!.jobId, older.jobId)
   })
 })
