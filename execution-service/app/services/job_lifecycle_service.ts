@@ -1,11 +1,28 @@
 import db from '@adonisjs/lucid/services/db'
 import { errors } from '@adonisjs/http-server'
+import { DateTime } from 'luxon'
 import ImageConfig from '#models/image_config'
 import Job from '#models/job'
 import JobResult from '#models/job_result'
 import fileService from '#services/file_service'
+import logger from '@adonisjs/core/services/logger'
 import type { MultipartFile } from '@adonisjs/core/bodyparser'
 import type { JobStatus } from '#models/job'
+
+type MarkCompletedResults = {
+  correctness_score?: number | null
+  tool_score?: number | null
+  comments?: string | null
+  comment_format?: number | null
+  test_output?: string | null
+  container_logs?: string | null
+  exit_code?: number | null
+  cpu_usage?: number | null
+  ram_usage?: number | null
+  runtime_ms?: number | null
+  pod_name?: string | null
+  node_ip?: string | null
+}
 
 type SubmitJobPayload = {
   docker_image_tag: string
@@ -46,21 +63,23 @@ class JobLifecycleService {
     return (ageSeconds + runtime) / runtime
   }
 
-  private async countJobsAhead(job: Job): Promise<number> {
-    const currentScore = this.getHrrnScore(job)
-    const query = await db
-      .from('jobs')
-      .where('status', 'pending')
-      .whereNot('job_id', job.jobId)
-      .where('estimated_runtime', '>', 0)
-      .whereRaw(
-        '((EXTRACT(EPOCH FROM (NOW() - submitted_at)) + estimated_runtime) / estimated_runtime) > ?',
-        [currentScore]
-      )
-      .count('* as total')
-      .first()
+  private async countJobsAhead(jobId: number): Promise<number> {
+    // Compute both scores at a single NOW() so there is no timing split
+    // between the reference score and the comparison scores.
+    const result = (await db.rawQuery(
+      `WITH my_score AS (
+         SELECT (EXTRACT(EPOCH FROM (NOW() - submitted_at)) + estimated_runtime) / estimated_runtime AS score
+         FROM jobs WHERE job_id = ?
+       )
+       SELECT COUNT(*) AS count
+       FROM jobs, my_score
+       WHERE status = 'pending'
+         AND job_id != ?
+         AND (EXTRACT(EPOCH FROM (NOW() - submitted_at)) + estimated_runtime) / estimated_runtime > my_score.score`,
+      [jobId, jobId]
+    )) as unknown as RawQueryResult<{ count: string }>
 
-    return Number(query?.total || 0)
+    return Number(result.rows[0]?.count ?? 0)
   }
 
   // ---------------------------------------------------------------------------
@@ -130,8 +149,7 @@ class JobLifecycleService {
       job.sourcePath = sourcePath
       await job.save()
 
-      const persistedJob = await Job.findOrFail(job.jobId)
-      const jobsAhead = await this.countJobsAhead(persistedJob)
+      const jobsAhead = await this.countJobsAhead(job.jobId)
 
       return {
         job_id: Number(job.jobId),
@@ -266,6 +284,8 @@ class JobLifecycleService {
     job.status = 'cancelled'
     await job.save()
 
+    await fileService.cleanupSubmissionDirectory(jobId)
+
     return {
       found: true,
       conflict: false,
@@ -275,9 +295,9 @@ class JobLifecycleService {
 
   async getQueuePosition(jobId: number) {
     const job = await Job.find(jobId)
-    if (!job) return { position: null, estimatedWait: null }
+    if (!job) return { position: null, estimatedWait: null, hrrnScore: null, totalPending: null }
 
-    const jobsAhead = await this.countJobsAhead(job)
+    const jobsAhead = await this.countJobsAhead(job.jobId)
     const position = jobsAhead + 1
 
     const avgResult = (await db.rawQuery(
@@ -288,7 +308,114 @@ class JobLifecycleService {
     const avgSeconds = avgResult.rows[0]?.avg_runtime ?? job.estimatedRuntime
     const estimatedWait = position * Number(avgSeconds)
 
-    return { position, estimatedWait }
+    const totalResult = (await db.rawQuery(
+      `SELECT COUNT(*) as total FROM jobs WHERE status = 'pending'`
+    )) as unknown as RawQueryResult<{ total: string }>
+    const totalPending = Number(totalResult.rows[0]?.total ?? 0)
+
+    const hrrnScore = this.getHrrnScore(job)
+
+    return { position, estimatedWait, hrrnScore, totalPending }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Task 9: Job lifecycle state transitions
+  // ---------------------------------------------------------------------------
+
+  async markCompleted(jobId: number, results: MarkCompletedResults, actualRuntime: number) {
+    const job = await Job.find(jobId)
+
+    if (!job) {
+      logger.warn({ jobId }, 'markCompleted called on non-existent job')
+      return null
+    }
+
+    if (job.status !== 'processing') {
+      logger.warn({ jobId, status: job.status }, 'markCompleted called on job not in processing status — skipping')
+      return null
+    }
+
+    await db.transaction(async (trx) => {
+      job.useTransaction(trx)
+      job.status = 'completed'
+      job.completedAt = DateTime.now()
+      job.actualRuntime = actualRuntime
+      await job.save()
+
+      await JobResult.create(
+        {
+          jobId,
+          correctnessScore: results.correctness_score ?? null,
+          toolScore: results.tool_score ?? null,
+          comments: results.comments ?? null,
+          commentFormat: results.comment_format ?? null,
+          testOutput: results.test_output ?? null,
+          containerLogs: results.container_logs ?? null,
+          exitCode: results.exit_code ?? null,
+          cpuUsage: results.cpu_usage ?? null,
+          ramUsage: results.ram_usage ?? null,
+          runtimeMs: results.runtime_ms ?? null,
+          podName: results.pod_name ?? null,
+          nodeIp: results.node_ip ?? null,
+        },
+        { client: trx }
+      )
+
+      // Atomic SQL update prevents lost increments when two jobs with the
+      // same image_config_id complete concurrently.
+      await trx.rawQuery(
+        `UPDATE image_configs
+         SET avg_runtime_seconds = CASE
+               WHEN total_completed_jobs = 0 THEN ?
+               ELSE (avg_runtime_seconds * total_completed_jobs + ?) / (total_completed_jobs + 1)
+             END,
+             total_completed_jobs = total_completed_jobs + 1,
+             updated_at = NOW()
+         WHERE id = ?`,
+        [actualRuntime, actualRuntime, job.imageConfigId]
+      )
+    })
+
+    // Task 11 (callback service) will hook in here when implemented
+    if (job.callbackUrl) {
+      logger.info({ jobId, callbackUrl: job.callbackUrl }, 'Job completed with callback_url — callback delivery pending Task 11')
+    }
+
+    return job
+  }
+
+  async markFailed(jobId: number, errorMessage: string) {
+    const job = await Job.find(jobId)
+
+    if (!job) {
+      logger.warn({ jobId }, 'markFailed called on non-existent job')
+      return null
+    }
+
+    if (job.status === 'completed') {
+      logger.warn({ jobId }, 'markFailed called on already-completed job — skipping')
+      return null
+    }
+
+    await job.load('imageConfig')
+    const maxRetries = job.imageConfig?.maxRetries ?? 0
+
+    if (job.retryCount < maxRetries) {
+      job.retryCount += 1
+      job.status = 'pending'
+      job.workerPodName = null
+      job.startedAt = null
+      await job.save()
+      logger.info({ jobId, retryCount: job.retryCount, maxRetries }, `Job ${jobId} failed, retrying (attempt ${job.retryCount}/${maxRetries}): ${errorMessage}`)
+    } else {
+      job.status = 'failed'
+      job.errorMessage = errorMessage
+      job.completedAt = DateTime.now()
+      await job.save()
+      logger.error({ jobId, maxRetries }, `Job ${jobId} permanently failed after ${maxRetries} retries: ${errorMessage}`)
+    }
+
+    return job
   }
 }
 
