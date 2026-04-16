@@ -150,4 +150,38 @@ Separate frontend team handles UI, user management, course structure, and submis
 
 ## Current State
 
-The AdonisJS skeleton is set up with Docker, Postgres, middleware, and ORM configured. Two database tables exist (`submitted_jobs` and `job_results`) but need to be updated to match the new schema. No controllers or services have been written yet. The HRRN algorithm exists as a standalone example but isn't wired into the app.
+Tasks 1–9 are complete. The application is fully functional up through job lifecycle management.
+
+### Completed
+
+- **Task 1** — All 5 database tables migrated (`jobs`, `job_results`, `image_configs`, `system_settings`, `callback_log`) with full schema
+- **Task 2** — Docs written: `DATABASE.md`, `API_ENDPOINTS.md`, `ARCHITECTURE.md`, `CONVENTIONS.md`
+- **Task 3** — Job submission: `POST /api/v1/jobs`, file upload via `FileService`, queue position returned
+- **Task 4** — Job status & results: `GET /api/v1/jobs`, `GET /api/v1/jobs/:id`, `GET /api/v1/jobs/:id/results`, `DELETE /api/v1/jobs/:id`
+- **Task 5** — Queue endpoints: `GET /api/v1/queue/status`, `GET /api/v1/queue/position/:id`
+- **Task 6** — Image config CRUD: full `GET/POST/PUT/DELETE /api/v1/images` via `ImageConfigService`
+- **Task 7** — Config & metrics endpoints (`GET/PUT /api/v1/config`, `GET /api/v1/metrics/overview`) with auth middleware
+- **Task 8** — HRRN scheduler wired into app: `HrrnStrategy` uses `FOR UPDATE SKIP LOCKED` for atomic dequeue, pluggable via `SchedulerService`
+- **Task 9** — Job lifecycle state transitions in `JobLifecycleService`: `markCompleted()` (transactional, updates rolling avg), `markFailed()` (retry logic), `cancelJob()`
+
+### Services in `app/services/`
+
+| File | Purpose |
+|------|---------|
+| `job_lifecycle_service.ts` | Core job state machine — submit, complete, fail, cancel, queue position |
+| `file_service.ts` | Store/cleanup submission files under `/data/submissions/{jobId}/input/` |
+| `image_config_service.ts` | CRUD for docker image configurations |
+| `queue_service.ts` | Queue status and position queries |
+| `scheduler_service.ts` | Pluggable scheduler — reads strategy from `system_settings`, delegates to strategy |
+| `metrics_service.ts` | System metrics aggregation |
+| `strategies/hrrn_strategy.ts` | HRRN dequeue via raw SQL with `FOR UPDATE SKIP LOCKED` |
+
+### Not Yet Implemented (Tasks 10–16)
+
+- **Task 10** — Timeout & cleanup background service (detecting stuck jobs, purging old records, orphaned files)
+- **Task 11** — Callback service (webhook delivery to `callback_url`)
+- **Task 12** — Dispatcher service (polling loop that dequeues jobs and creates K8s pods)
+- **Task 13** — Kubernetes integration (creating/monitoring/deleting pods via `@kubernetes/client-node`)
+- **Task 14** — File management (serving/accessing submission files from within pods)
+- **Task 15** — Integration tests
+- **Task 16** — Kubernetes manifests (deployment YAMLs)

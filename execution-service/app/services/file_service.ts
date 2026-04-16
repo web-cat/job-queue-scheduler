@@ -7,6 +7,10 @@ class FileService {
   private readonly submissionsPath = process.env.SUBMISSIONS_PATH || '/data/submissions'
   private readonly maxTotalUploadBytes = 50 * 1024 * 1024
 
+  get submissionsBasePath(): string {
+    return this.submissionsPath
+  }
+
   getInputPath(jobId: number): string {
     return path.join(this.submissionsPath, String(jobId), 'input')
   }

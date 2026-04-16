@@ -5,6 +5,37 @@ import path from 'node:path'
 import ImageConfig from '#models/image_config'
 
 test.group('Job submission endpoint', (group) => {
+  group.setup(async () => {
+    await ImageConfig.firstOrCreate(
+      { dockerImageTag: 'webcat/java-grader:example' },
+      {
+        displayName: 'Java Grader',
+        timeoutSeconds: 30,
+        memoryLimitMb: 512,
+        cpuLimitMillicores: 1000,
+        maxRetries: 1,
+        defaultPriority: 5,
+        defaultEstimatedRuntime: 15,
+        isActive: true,
+        totalCompletedJobs: 0,
+      }
+    )
+    await ImageConfig.firstOrCreate(
+      { dockerImageTag: 'webcat/python-grader:example' },
+      {
+        displayName: 'Python Grader',
+        timeoutSeconds: 30,
+        memoryLimitMb: 512,
+        cpuLimitMillicores: 1000,
+        maxRetries: 1,
+        defaultPriority: 5,
+        defaultEstimatedRuntime: 10,
+        isActive: true,
+        totalCompletedJobs: 0,
+      }
+    )
+  })
+
   const cleanupSubmissionDirs = async () => {
     const jobs = await db.from('jobs').where('submission_id', '>=', 900000).select('source_path')
 
@@ -40,7 +71,7 @@ test.group('Job submission endpoint', (group) => {
       .file('files', fixturePath)
 
     response.assertStatus(201)
-    const body = await response.body()
+    const body = (await response.body()) as any
     assert.equal(body.data.status, 'pending')
     assert.equal(body.data.submission_id, 900001)
     assert.equal(body.data.docker_image_tag, 'webcat/java-grader:example')
