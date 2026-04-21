@@ -376,9 +376,12 @@ class JobLifecycleService {
       )
     })
 
-    // Task 11 (callback service) will hook in here when implemented
+    // Attempt immediate callback delivery (Task 11). Failures are retried by the background task.
     if (job.callbackUrl) {
-      logger.info({ jobId, callbackUrl: job.callbackUrl }, 'Job completed with callback_url — callback delivery pending Task 11')
+      const { default: callbackService } = await import('#services/callback_service')
+      callbackService.deliverResult(jobId).catch((err) =>
+        logger.error({ jobId, err }, 'Unhandled error in callback delivery after markCompleted')
+      )
     }
 
     return job
