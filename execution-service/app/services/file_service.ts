@@ -5,8 +5,10 @@ import type { MultipartFile } from '@adonisjs/core/bodyparser'
 import logger from '@adonisjs/core/services/logger'
 
 /** Domain error for file operations; optional `httpStatus` when the API should map it to a response. */
+
 /**
  * Maps {@link FileService.readResults} errors to stable `markFailed` messages (task 14 edge cases).
+ * Unknown codes log the full error (may include paths) and return a generic string — never echo raw FS/parse details to clients.
  */
 export function markFailedMessageForGradingResultsError(error: FileServiceError): string {
   switch (error.code) {
@@ -17,7 +19,11 @@ export function markFailedMessageForGradingResultsError(error: FileServiceError)
     case 'RESULTS_INVALID_JSON':
       return 'Grading container produced invalid results (malformed JSON)'
     default:
-      return error.message
+      logger.warn(
+        { err: error, code: error.code },
+        'Unhandled grading results error code; returning generic markFailed message'
+      )
+      return 'Grading container produced unreadable results'
   }
 }
 
@@ -237,11 +243,8 @@ export class FileService {
   }
 
   /**
-   * Deletes `/data/submissions/{jobId}/` recursively. ENOENT is treated as already removed.
-   */
-  /**
-   * Deletes the job submission tree. ENOENT is normal (already removed).
-   * Does not throw — callers rely on cleanup not breaking higher-level flows.
+   * Recursively deletes the submission directory for `jobId` under the configured submissions root (`SUBMISSIONS_PATH`).
+   * ENOENT is treated as already cleaned up. Other errors are logged; this method does not throw.
    */
   async cleanupSubmission(jobId: number): Promise<void> {
     const jobPath = path.join(this.submissionsPath, String(jobId))
@@ -461,13 +464,14 @@ export class FileService {
   }
 
   /**
-   * Deletes `{submissions}/{id}/` for numeric `id` not present in `activeJobIds`.
+   * Deletes `{submissions}/{id}/` directories whose numeric `id` is not in `activeJobIds`.
+   * Only **directories** whose names are positive integers are considered; stray numeric files are left alone.
    */
   async cleanupOrphanedDirectories(activeJobIds: Set<number>, submissionsRoot?: string): Promise<number> {
     const root = submissionsRoot ?? this.submissionsPath
-    let entries: string[]
+    let entries: Dirent[]
     try {
-      entries = await readdir(root)
+      entries = await readdir(root, { withFileTypes: true })
     } catch (err: any) {
       if (err?.code === 'ENOENT') return 0
       logFsError('cleanupOrphanedDirectories.readdir', err)
@@ -479,7 +483,9 @@ export class FileService {
     }
 
     let cleaned = 0
-    for (const name of entries) {
+    for (const dirent of entries) {
+      if (!dirent.isDirectory()) continue
+      const name = dirent.name
       const jobId = Number(name)
       if (!Number.isInteger(jobId) || jobId <= 0) continue
       if (activeJobIds.has(jobId)) continue

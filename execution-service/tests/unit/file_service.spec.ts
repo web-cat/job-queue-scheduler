@@ -189,6 +189,14 @@ test.group('FileService — integration', (group) => {
     assert.isTrue(s.isDirectory())
   })
 
+  test('cleanupOrphanedDirectories does not remove numeric-named files', async ({ assert }) => {
+    await writeFile(path.join(base, '42'), 'not a directory')
+    const cleaned = await svc.cleanupOrphanedDirectories(new Set())
+    assert.equal(cleaned, 0)
+    const st = await stat(path.join(base, '42'))
+    assert.isTrue(st.isFile())
+  })
+
   test('storeSubmissionFiles maps ENOSPC to INSUFFICIENT_STORAGE', async ({ assert }) => {
     const enospc = Object.assign(new Error('no space'), { code: 'ENOSPC' })
     const files = [
