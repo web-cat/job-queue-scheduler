@@ -1,7 +1,7 @@
 # Task 14: File Management Service
 
-**Status:** Not Started
-**Assignee:** (pick up)
+**Status:** Completed
+**Assignee:** Sy
 **Priority:** MEDIUM
 **Dependencies:** Task 1
 
