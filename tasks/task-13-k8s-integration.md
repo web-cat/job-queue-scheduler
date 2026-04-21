@@ -1,7 +1,7 @@
 # Task 13: Kubernetes Integration
 
-**Status:** Not Started
-**Assignee:** (pick up)
+**Status:** Completed
+**Assignee:** Tomas and Sy
 **Priority:** HIGH — interfaces with K8s to run grading containers
 **Dependencies:** Task 1
 
