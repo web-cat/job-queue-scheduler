@@ -137,7 +137,7 @@ test.group('CallbackService — deliverResult', (group) => {
   test('skips when result_delivered is already true', async ({ assert }) => {
     const cfg = await createImageConfig()
     const job = await createJob(cfg.id, {
-      callbackUrl: 'http://example.com/webhook',
+      callbackUrl: 'https://example.com/webhook',
       resultDelivered: true,
     })
     await createJobResult(job.jobId)
@@ -154,7 +154,7 @@ test.group('CallbackService — deliverResult', (group) => {
 
   test('skips when job_result does not exist yet', async ({ assert }) => {
     const cfg = await createImageConfig()
-    const job = await createJob(cfg.id, { callbackUrl: 'http://example.com/webhook' })
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
     // No job result
 
     const { calls, restore } = mockFetch({ ok: true, status: 200 })
@@ -169,7 +169,7 @@ test.group('CallbackService — deliverResult', (group) => {
 
   test('POSTs correct payload to callback_url', async ({ assert }) => {
     const cfg = await createImageConfig()
-    const job = await createJob(cfg.id, { callbackUrl: 'http://example.com/webhook' })
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
     const result = await createJobResult(job.jobId)
 
     const { calls, restore } = mockFetch({ ok: true, status: 200 })
@@ -180,7 +180,7 @@ test.group('CallbackService — deliverResult', (group) => {
     }
 
     assert.lengthOf(calls, 1)
-    assert.equal(calls[0].url, 'http://example.com/webhook')
+    assert.equal(calls[0].url, 'https://example.com/webhook')
 
     const body = calls[0].body as Record<string, unknown>
     assert.equal(body.job_id, job.jobId)
@@ -194,7 +194,7 @@ test.group('CallbackService — deliverResult', (group) => {
 
   test('sets result_delivered = true on 2xx response', async ({ assert }) => {
     const cfg = await createImageConfig()
-    const job = await createJob(cfg.id, { callbackUrl: 'http://example.com/webhook' })
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
     await createJobResult(job.jobId)
 
     const { restore } = mockFetch({ ok: true, status: 201 })
@@ -210,7 +210,7 @@ test.group('CallbackService — deliverResult', (group) => {
 
   test('logs attempt with success=true on 2xx response', async ({ assert }) => {
     const cfg = await createImageConfig()
-    const job = await createJob(cfg.id, { callbackUrl: 'http://example.com/webhook' })
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
     await createJobResult(job.jobId)
 
     const { restore } = mockFetch({ ok: true, status: 200, body: 'ok' })
@@ -225,12 +225,12 @@ test.group('CallbackService — deliverResult', (group) => {
     assert.equal(logs[0].responseCode, 200)
     assert.isTrue(logs[0].success)
     assert.equal(logs[0].attemptNumber, 1)
-    assert.equal(logs[0].url, 'http://example.com/webhook')
+    assert.equal(logs[0].url, 'https://example.com/webhook')
   })
 
   test('does not set result_delivered on non-2xx response', async ({ assert }) => {
     const cfg = await createImageConfig()
-    const job = await createJob(cfg.id, { callbackUrl: 'http://example.com/webhook' })
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
     await createJobResult(job.jobId)
 
     const { restore } = mockFetch({ ok: false, status: 500, body: 'Internal Server Error' })
@@ -251,7 +251,7 @@ test.group('CallbackService — deliverResult', (group) => {
 
   test('logs attempt with null response_code and success=false on network error', async ({ assert }) => {
     const cfg = await createImageConfig()
-    const job = await createJob(cfg.id, { callbackUrl: 'http://example.com/webhook' })
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
     await createJobResult(job.jobId)
 
     const { restore } = mockFetch(null) // null triggers ECONNREFUSED
@@ -273,16 +273,22 @@ test.group('CallbackService — deliverResult', (group) => {
 
   test('increments attempt_number on each call', async ({ assert }) => {
     const cfg = await createImageConfig()
-    const job = await createJob(cfg.id, { callbackUrl: 'http://example.com/webhook' })
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
     await createJobResult(job.jobId)
 
     const { restore: r1 } = mockFetch({ ok: false, status: 503 })
-    await callbackService.deliverResult(job.jobId)
-    r1()
+    try {
+      await callbackService.deliverResult(job.jobId)
+    } finally {
+      r1()
+    }
 
     const { restore: r2 } = mockFetch({ ok: true, status: 200 })
-    await callbackService.deliverResult(job.jobId)
-    r2()
+    try {
+      await callbackService.deliverResult(job.jobId)
+    } finally {
+      r2()
+    }
 
     const logs = await CallbackLog.query().where('job_id', job.jobId).orderBy('attempt_number')
     assert.lengthOf(logs, 2)
@@ -294,7 +300,7 @@ test.group('CallbackService — deliverResult', (group) => {
 
   test('does not call fetch again after result_delivered is set', async ({ assert }) => {
     const cfg = await createImageConfig()
-    const job = await createJob(cfg.id, { callbackUrl: 'http://example.com/webhook' })
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
     await createJobResult(job.jobId)
 
     const { restore: r1 } = mockFetch({ ok: true, status: 200 })
@@ -329,9 +335,9 @@ test.group('CallbackService — retryPendingCallbacks', (group) => {
 
   test('delivers for all completed jobs with pending callbacks', async ({ assert }) => {
     const cfg = await createImageConfig()
-    const jobA = await createJob(cfg.id, { callbackUrl: 'http://example.com/a' })
+    const jobA = await createJob(cfg.id, { callbackUrl: 'https://example.com/a' })
     await createJobResult(jobA.jobId)
-    const jobB = await createJob(cfg.id, { callbackUrl: 'http://example.com/b' })
+    const jobB = await createJob(cfg.id, { callbackUrl: 'https://example.com/b' })
     await createJobResult(jobB.jobId)
 
     const { calls, restore } = mockFetch({ ok: true, status: 200 })
@@ -351,7 +357,7 @@ test.group('CallbackService — retryPendingCallbacks', (group) => {
   test('skips jobs already delivered', async ({ assert }) => {
     const cfg = await createImageConfig()
     const job = await createJob(cfg.id, {
-      callbackUrl: 'http://example.com/webhook',
+      callbackUrl: 'https://example.com/webhook',
       resultDelivered: true,
     })
     await createJobResult(job.jobId)
@@ -385,14 +391,14 @@ test.group('CallbackService — retryPendingCallbacks', (group) => {
     await SystemSetting.create({ key: 'callback_retry_max', value: '2' })
 
     const cfg = await createImageConfig()
-    const job = await createJob(cfg.id, { callbackUrl: 'http://example.com/webhook' })
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
     await createJobResult(job.jobId)
 
     // Simulate 2 prior failed attempts
     for (let i = 1; i <= 2; i++) {
       await CallbackLog.create({
         jobId: job.jobId,
-        url: 'http://example.com/webhook',
+        url: 'https://example.com/webhook',
         attemptNumber: i,
         responseCode: 500,
         responseBody: 'err',
@@ -417,12 +423,12 @@ test.group('CallbackService — retryPendingCallbacks', (group) => {
     await SystemSetting.create({ key: 'callback_retry_max', value: '3' })
 
     const cfg = await createImageConfig()
-    const job = await createJob(cfg.id, { callbackUrl: 'http://example.com/webhook' })
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
     await createJobResult(job.jobId)
 
     await CallbackLog.create({
       jobId: job.jobId,
-      url: 'http://example.com/webhook',
+      url: 'https://example.com/webhook',
       attemptNumber: 1,
       responseCode: 503,
       responseBody: 'unavailable',
@@ -450,7 +456,7 @@ test.group('CallbackService — retryPendingCallbacks', (group) => {
     const cfg = await createImageConfig()
     const pendingJob = await createJob(cfg.id, {
       status: 'pending',
-      callbackUrl: 'http://example.com/webhook',
+      callbackUrl: 'https://example.com/webhook',
     })
     await createJobResult(pendingJob.jobId)
 

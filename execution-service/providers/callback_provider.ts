@@ -29,14 +29,19 @@ export default class CallbackProvider {
 
     logger.info({ callbackRetrySeconds }, 'Starting callback retry background task')
 
+    let isRunning = false
+
     this.intervals.push(
-      setInterval(
-        () =>
-          callbackService
-            .retryPendingCallbacks()
-            .catch((err) => logger.error({ err }, 'Unhandled error in retryPendingCallbacks')),
-        callbackRetrySeconds * 1000
-      )
+      setInterval(() => {
+        if (isRunning) return
+        isRunning = true
+        callbackService
+          .retryPendingCallbacks()
+          .catch((err) => logger.error({ err }, 'Unhandled error in retryPendingCallbacks'))
+          .finally(() => {
+            isRunning = false
+          })
+      }, callbackRetrySeconds * 1000)
     )
   }
 

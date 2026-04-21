@@ -1,3 +1,4 @@
+import db from '@adonisjs/lucid/services/db'
 import Job from '#models/job'
 import JobResult from '#models/job_result'
 import CallbackLog from '#models/callback_log'
@@ -7,6 +8,7 @@ import { DateTime } from 'luxon'
 
 const CALLBACK_TIMEOUT_MS = 10_000
 const DEFAULT_MAX_RETRIES = 3
+const MAX_RESPONSE_BODY = 1_000
 
 async function getSetting(key: string, defaultValue: number): Promise<number> {
   try {
@@ -21,6 +23,27 @@ async function getSetting(key: string, defaultValue: number): Promise<number> {
   return defaultValue
 }
 
+function isValidCallbackUrl(rawUrl: string): boolean {
+  let url: URL
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    return false
+  }
+
+  if (url.protocol !== 'https:') return false
+
+  const host = url.hostname.toLowerCase()
+
+  if (host === 'localhost' || host === '::1' || /^127\./.test(host)) return false
+  if (/^169\.254\./.test(host)) return false
+  if (/^10\./.test(host)) return false
+  if (/^192\.168\./.test(host)) return false
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false
+
+  return true
+}
+
 class CallbackService {
   async deliverResult(jobId: number): Promise<void> {
     const job = await Job.find(jobId)
@@ -30,11 +53,14 @@ class CallbackService {
       return
     }
 
-    if (!job.callbackUrl) {
-      return
-    }
+    if (!job.callbackUrl) return
+    if (job.resultDelivered) return
 
-    if (job.resultDelivered) {
+    if (!isValidCallbackUrl(job.callbackUrl)) {
+      logger.warn(
+        { jobId, callbackUrl: job.callbackUrl },
+        `Callback URL failed SSRF validation for job ${jobId} — skipping`
+      )
       return
     }
 
@@ -44,8 +70,7 @@ class CallbackService {
       return
     }
 
-    const existingAttempts = await CallbackLog.query().where('job_id', jobId).count('* as total')
-    const attemptNumber = Number(existingAttempts[0].$extras.total) + 1
+    const callbackUrl = job.callbackUrl
 
     const payload = {
       job_id: job.jobId,
@@ -70,7 +95,7 @@ class CallbackService {
       const timer = setTimeout(() => controller.abort(), CALLBACK_TIMEOUT_MS)
 
       try {
-        const response = await fetch(job.callbackUrl, {
+        const response = await fetch(callbackUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -78,34 +103,56 @@ class CallbackService {
         })
 
         responseCode = response.status
-        responseBody = await response.text().catch(() => null)
+        const rawBody = await response.text().catch(() => null)
+        responseBody = rawBody !== null ? rawBody.slice(0, MAX_RESPONSE_BODY) : null
         success = response.ok
       } finally {
         clearTimeout(timer)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      responseBody = message
-      logger.warn({ jobId, callbackUrl: job.callbackUrl, error: message }, `Callback delivery failed for job ${jobId}`)
+      responseBody = message.slice(0, MAX_RESPONSE_BODY)
+      logger.warn(
+        { jobId, callbackUrl, error: message },
+        `Callback delivery failed for job ${jobId}`
+      )
     }
 
-    await CallbackLog.create({
-      jobId,
-      url: job.callbackUrl,
-      attemptNumber,
-      responseCode,
-      responseBody,
-      success,
-      attemptedAt: DateTime.now(),
+    // Serialize concurrent deliverResult calls for the same job: the row lock
+    // ensures two calls can't read the same attempt count and insert duplicate rows.
+    let attemptNumber!: number
+    await db.transaction(async (trx) => {
+      await trx.rawQuery('SELECT 1 FROM jobs WHERE job_id = ? FOR UPDATE', [jobId])
+
+      const countResult = await CallbackLog.query({ client: trx })
+        .where('job_id', jobId)
+        .count('* as total')
+      attemptNumber = Number(countResult[0].$extras.total) + 1
+
+      await CallbackLog.create(
+        {
+          jobId,
+          url: callbackUrl,
+          attemptNumber,
+          responseCode,
+          responseBody,
+          success,
+          attemptedAt: DateTime.now(),
+        },
+        { client: trx }
+      )
     })
 
     if (success) {
       job.resultDelivered = true
       await job.save()
-      logger.info({ jobId, callbackUrl: job.callbackUrl, attemptNumber }, `Callback delivered successfully for job ${jobId}`)
+      logger.info(
+        { jobId, callbackUrl, attemptNumber },
+        `Callback delivered successfully for job ${jobId}`
+      )
     } else {
       logger.warn(
-        { jobId, callbackUrl: job.callbackUrl, attemptNumber, responseCode },
+        { jobId, callbackUrl, attemptNumber, responseCode },
         `Callback delivery attempt ${attemptNumber} failed for job ${jobId}`
       )
     }
@@ -119,9 +166,23 @@ class CallbackService {
       .where('result_delivered', false)
       .whereNotNull('callback_url')
 
+    if (pendingJobs.length === 0) return
+
+    const pendingJobIds = pendingJobs.map((j) => j.jobId)
+
+    const countRows = await CallbackLog.query()
+      .whereIn('job_id', pendingJobIds)
+      .groupBy('job_id')
+      .select('job_id')
+      .count('* as total')
+
+    const attemptMap = new Map<number, number>()
+    for (const row of countRows) {
+      attemptMap.set(Number(row.jobId), Number(row.$extras.total))
+    }
+
     for (const job of pendingJobs) {
-      const attempts = await CallbackLog.query().where('job_id', job.jobId).count('* as total')
-      const attemptCount = Number(attempts[0].$extras.total)
+      const attemptCount = attemptMap.get(job.jobId) ?? 0
 
       if (attemptCount >= maxRetries) {
         logger.warn(
