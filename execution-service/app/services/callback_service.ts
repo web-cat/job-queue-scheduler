@@ -31,7 +31,13 @@ function isValidCallbackUrl(rawUrl: string): boolean {
     return false
   }
 
-  if (url.protocol !== 'https:') return false
+  if (url.protocol !== 'https:') {
+    logger.warn(
+      { callbackUrl: rawUrl },
+      'Callback URL rejected: only HTTPS is allowed'
+    )
+    return false
+  }
 
   const host = url.hostname.toLowerCase()
 
@@ -118,11 +124,27 @@ class CallbackService {
       )
     }
 
-    // Serialize concurrent deliverResult calls for the same job: the row lock
-    // ensures two calls can't read the same attempt count and insert duplicate rows.
+    // Serialize concurrent deliverResult calls for the same job.
+    // The FOR UPDATE lock is re-checked inside the transaction (via Lucid's
+    // typed query so boolean casting is correct) so that if two callers both
+    // passed the early resultDelivered guard, only the first to acquire the lock
+    // will log success and mark delivery; the second will see resultDelivered =
+    // true and bail out without logging a spurious extra entry.
+    // result_delivered is updated inside the same transaction as the CallbackLog
+    // insert so both are committed atomically — no crash window between them.
     let attemptNumber!: number
+    let alreadyDelivered = false
+
     await db.transaction(async (trx) => {
+      // Lock the row, then re-read it through Lucid so the boolean column is
+      // cast correctly (rawQuery can return 't'/'f' strings on some pg versions).
       await trx.rawQuery('SELECT 1 FROM jobs WHERE job_id = ? FOR UPDATE', [jobId])
+      const lockedJob = await Job.query({ client: trx }).where('job_id', jobId).first()
+
+      if (!lockedJob || lockedJob.resultDelivered) {
+        alreadyDelivered = true
+        return
+      }
 
       const countResult = await CallbackLog.query({ client: trx })
         .where('job_id', jobId)
@@ -141,11 +163,17 @@ class CallbackService {
         },
         { client: trx }
       )
+
+      if (success) {
+        lockedJob.resultDelivered = true
+        await lockedJob.save()
+      }
     })
 
+    if (alreadyDelivered) return
+
     if (success) {
-      job.resultDelivered = true
-      await job.save()
+      job.resultDelivered = true // keep in-memory object in sync
       logger.info(
         { jobId, callbackUrl, attemptNumber },
         `Callback delivered successfully for job ${jobId}`
@@ -170,19 +198,18 @@ class CallbackService {
 
     const pendingJobIds = pendingJobs.map((j) => j.jobId)
 
-    const countRows = await CallbackLog.query()
-      .whereIn('job_id', pendingJobIds)
-      .groupBy('job_id')
-      .select('job_id')
-      .count('* as total')
+    const { rows: countRows } = await db.rawQuery<{ rows: { job_id: string; total: string }[] }>(
+      `SELECT job_id, COUNT(*) as total FROM callback_log WHERE job_id = ANY(?) GROUP BY job_id`,
+      [pendingJobIds]
+    )
 
     const attemptMap = new Map<number, number>()
     for (const row of countRows) {
-      attemptMap.set(Number(row.jobId), Number(row.$extras.total))
+      attemptMap.set(Number(row.job_id), Number(row.total))
     }
 
     for (const job of pendingJobs) {
-      const attemptCount = attemptMap.get(job.jobId) ?? 0
+      const attemptCount = attemptMap.get(Number(job.jobId)) ?? 0
 
       if (attemptCount >= maxRetries) {
         logger.warn(

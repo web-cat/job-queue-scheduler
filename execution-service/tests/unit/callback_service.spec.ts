@@ -304,8 +304,11 @@ test.group('CallbackService — deliverResult', (group) => {
     await createJobResult(job.jobId)
 
     const { restore: r1 } = mockFetch({ ok: true, status: 200 })
-    await callbackService.deliverResult(job.jobId)
-    r1()
+    try {
+      await callbackService.deliverResult(job.jobId)
+    } finally {
+      r1()
+    }
 
     const { calls, restore: r2 } = mockFetch({ ok: true, status: 200 })
     try {
