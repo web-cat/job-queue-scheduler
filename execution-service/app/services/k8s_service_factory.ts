@@ -12,9 +12,18 @@
 import k8sMock from './k8s_service_mock.js'
 import k8sReal from './k8s_service.js'
 
-const useMock =
-  process.env.NODE_ENV === 'development' || process.env.USE_K8S_MOCK === 'true'
+export function shouldUseK8sMock(
+  env: Partial<Pick<NodeJS.ProcessEnv, 'NODE_ENV' | 'USE_K8S_MOCK'>> = process.env
+): boolean {
+  return env.NODE_ENV === 'development' || env.USE_K8S_MOCK === 'true'
+}
 
-const k8sService = useMock ? k8sMock : k8sReal
+export function getK8sService(
+  env: Partial<Pick<NodeJS.ProcessEnv, 'NODE_ENV' | 'USE_K8S_MOCK'>> = process.env
+) {
+  return shouldUseK8sMock(env) ? k8sMock : k8sReal
+}
+
+const k8sService = getK8sService()
 
 export default k8sService

@@ -1,5 +1,6 @@
 import * as k8s from '@kubernetes/client-node'
 import logger from '@adonisjs/core/services/logger'
+import path from 'node:path'
 
 const MAX_LOG_BYTES = 10 * 1024 // 10KB
 
@@ -57,6 +58,28 @@ class K8sService {
     return `grading-job-${jobId}`
   }
 
+  private resolveAndValidateHostPath(hostPath: string, rootEnvVar: string): string {
+    const resolved = path.resolve(hostPath)
+
+    const root = process.env[rootEnvVar]
+    if (!root) {
+      // We still normalize to an absolute path so the manifest is deterministic.
+      return resolved
+    }
+
+    const resolvedRoot = path.resolve(root)
+    const relative = path.relative(resolvedRoot, resolved)
+
+    // Reject anything outside the configured root (including traversals).
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error(
+        `Refusing to mount hostPath outside ${rootEnvVar}. root=${resolvedRoot} path=${resolved}`
+      )
+    }
+
+    return resolved
+  }
+
   /**
    * Create a K8s Job resource to run the grading container.
    * Returns the Job name.
@@ -73,6 +96,9 @@ class K8sService {
       memoryLimitMb,
       cpuLimitMillicores,
     } = params
+
+    const resolvedInputPath = this.resolveAndValidateHostPath(inputPath, 'K8S_SUBMISSIONS_ROOT')
+    const resolvedOutputPath = this.resolveAndValidateHostPath(outputPath, 'K8S_OUTPUT_ROOT')
 
     const jobName = this.getJobName(jobId)
 
@@ -113,11 +139,11 @@ class K8sService {
             volumes: [
               {
                 name: 'submission-input',
-                hostPath: { path: inputPath, type: 'Directory' },
+                hostPath: { path: resolvedInputPath, type: 'Directory' },
               },
               {
                 name: 'grading-output',
-                hostPath: { path: outputPath, type: 'DirectoryOrCreate' },
+                hostPath: { path: resolvedOutputPath, type: 'DirectoryOrCreate' },
               },
               {
                 name: 'tmp',
@@ -224,7 +250,12 @@ class K8sService {
 
     // Hard deadline exceeded — force-delete and return failure
     logger.error({ jobName }, `K8s Job ${jobName} exceeded hard deadline, force-deleting`)
-    await this.deleteJob(jobName)
+    try {
+      await this.deleteJob(jobName, { force: true })
+    } catch (error) {
+      // Cleanup failures shouldn't mask the timeout result.
+      logger.warn({ jobName, error }, `Failed to cleanup timed-out K8s Job ${jobName}`)
+    }
     return {
       succeeded: false,
       exitCode: 124, // Matches timeout exit code convention
@@ -262,7 +293,7 @@ class K8sService {
         labelSelector: 'app=grading-worker',
       })
 
-      const activeJobs = items.filter((job) => {
+      const activeJobs = items.filter((job: k8s.V1Job) => {
         const { active, succeeded, failed } = job.status ?? {}
         // A job is active if it has running pods and hasn't finished
         return (active ?? 0) > 0 || (!succeeded && !failed)
@@ -320,16 +351,23 @@ class K8sService {
    * Uses Foreground propagation so the pod is deleted before the Job object.
    * Silently ignores 404 — the job may have already been cleaned up.
    */
-  async deleteJob(jobName: string): Promise<void> {
+  async deleteJob(jobName: string, options?: { force?: boolean }): Promise<void> {
     this.ensureInitialized()
 
     try {
+      const force = options?.force === true
       await this.batchApi.deleteNamespacedJob({
         name: jobName,
         namespace: this.namespace,
-        body: { propagationPolicy: 'Foreground' },
+        // DeleteOptions:
+        // - Foreground: ensures pods are removed alongside the Job object.
+        // - gracePeriodSeconds=0: best-effort "force" delete for stuck workloads.
+        body: {
+          propagationPolicy: 'Foreground',
+          ...(force ? { gracePeriodSeconds: 0 } : {}),
+        },
       })
-      logger.info({ jobName }, `Deleted K8s Job ${jobName}`)
+      logger.info({ jobName, force }, `Deleted K8s Job ${jobName}`)
     } catch (error: any) {
       if (error?.response?.statusCode === 404) {
         // Already gone — not an error

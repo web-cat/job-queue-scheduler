@@ -7,6 +7,7 @@ export const controllers = {
   AccessToken: () => import('#controllers/access_token_controller'),
   Config: () => import('#controllers/config_controller'),
   Health: () => import('#controllers/health_controller'),
+  Images: () => import('#controllers/images_controller'),
   Jobs: () => import('#controllers/jobs_controller'),
   Metrics: () => import('#controllers/metrics_controller'),
   NewAccount: () => import('#controllers/new_account_controller'),
