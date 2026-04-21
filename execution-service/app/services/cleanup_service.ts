@@ -1,5 +1,4 @@
-import { readdir, rm } from 'node:fs/promises'
-import path from 'node:path'
+import { readdir } from 'node:fs/promises'
 import { DateTime } from 'luxon'
 import Job from '#models/job'
 import fileService from '#services/file_service'
@@ -28,7 +27,7 @@ class CleanupService {
 
       // Clean up submission files — non-critical, cleanupOrphanedFiles catches any misses
       for (const jobId of jobIds) {
-        await fileService.cleanupSubmissionDirectory(jobId)
+        await fileService.cleanupSubmission(jobId)
       }
 
       logger.info(
@@ -52,28 +51,17 @@ class CleanupService {
         throw error
       }
 
-      // Filter to numeric directory names only
       const jobIds = entries.map(Number).filter((n) => Number.isInteger(n) && n > 0)
 
       if (jobIds.length === 0) return
 
-      // Batch query: fetch all active jobs in one round-trip instead of N individual lookups
       const activeJobs = await Job.query()
         .whereIn('job_id', jobIds)
         .whereIn('status', ['pending', 'queued', 'processing'])
 
       const activeSet = new Set(activeJobs.map((j) => Number(j.jobId)))
 
-      let cleaned = 0
-
-      for (const jobId of jobIds) {
-        if (!activeSet.has(jobId)) {
-          const jobDir = path.join(submissionsPath, String(jobId))
-          await rm(jobDir, { recursive: true, force: true })
-          cleaned++
-          logger.info({ jobId }, `Cleaned up orphaned files for job ${jobId}`)
-        }
-      }
+      const cleaned = await fileService.cleanupOrphanedDirectories(activeSet, submissionsPath)
 
       if (cleaned > 0) {
         logger.info({ cleaned }, `Cleaned up orphaned files for ${cleaned} job(s)`)

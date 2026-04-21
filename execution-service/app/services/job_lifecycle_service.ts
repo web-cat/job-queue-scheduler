@@ -4,7 +4,7 @@ import { DateTime } from 'luxon'
 import ImageConfig from '#models/image_config'
 import Job from '#models/job'
 import JobResult from '#models/job_result'
-import fileService from '#services/file_service'
+import fileService, { FileServiceError } from '#services/file_service'
 import logger from '@adonisjs/core/services/logger'
 import type { MultipartFile } from '@adonisjs/core/bodyparser'
 import type { JobStatus } from '#models/job'
@@ -161,8 +161,14 @@ class JobLifecycleService {
         submitted_at: job.submittedAt,
       }
     } catch (error) {
-      await fileService.cleanupSubmissionDirectory(job.jobId)
+      await fileService.cleanupSubmission(job.jobId)
       await job.delete()
+      if (error instanceof FileServiceError && error.httpStatus !== undefined) {
+        throw errors.E_HTTP_EXCEPTION.invoke(
+          { error: { code: error.code, message: error.message } },
+          error.httpStatus
+        )
+      }
       throw error
     }
   }
@@ -284,7 +290,7 @@ class JobLifecycleService {
     job.status = 'cancelled'
     await job.save()
 
-    await fileService.cleanupSubmissionDirectory(jobId)
+    await fileService.cleanupSubmission(jobId)
 
     return {
       found: true,

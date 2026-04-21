@@ -76,7 +76,10 @@ function mockFetch(response: MockResponse | null = null) {
   const calls: { url: string; init: RequestInit; body: unknown }[] = []
   const originalFetch = globalThis.fetch
 
-  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  globalThis.fetch = async (
+    input: Parameters<typeof globalThis.fetch>[0],
+    init?: RequestInit
+  ): Promise<Response> => {
     const bodyText = init?.body ? String(init.body) : ''
     let parsedBody: unknown = bodyText
     try {
