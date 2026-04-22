@@ -72,6 +72,44 @@ class CleanupService {
       logger.error({ error }, 'Error during orphaned file cleanup')
     }
   }
+
+  async cleanupOrphanedPayloads(basePath?: string): Promise<void> {
+    const payloadsPath = basePath ?? fileService.payloadsBasePath
+
+    try {
+      let entries: string[]
+      try {
+        entries = await readdir(payloadsPath)
+      } catch (error: any) {
+        if (error?.code === 'ENOENT') return
+        throw error
+      }
+
+      const jobIds = entries.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+
+      if (jobIds.length === 0) return
+
+      // A payload is orphaned if its job row is gone OR the job's retention window
+      // has passed. We keep payloads for any job that still exists in the DB — the
+      // per-job retention sweep in cleanupOldJobs handles the time-based removal.
+      const existingJobs = await Job.query().whereIn('job_id', jobIds).select('jobId')
+      const existingSet = new Set(existingJobs.map((j) => Number(j.jobId)))
+
+      let cleaned = 0
+      for (const jobId of jobIds) {
+        if (!existingSet.has(jobId)) {
+          await fileService.cleanupPayload(jobId)
+          cleaned++
+        }
+      }
+
+      if (cleaned > 0) {
+        logger.info({ cleaned }, `Cleaned up orphaned payloads for ${cleaned} job(s)`)
+      }
+    } catch (error) {
+      logger.error({ error }, 'Error during orphaned payload cleanup')
+    }
+  }
 }
 
 export default new CleanupService()

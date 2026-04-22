@@ -79,7 +79,7 @@ class CallbackService {
 
     const callbackUrl = job.callbackUrl
 
-    const hasPayload = jobResult.payloadPath !== null
+    const hasPayload = jobResult.payloadPath != null
     const payload = {
       job_id: job.jobId,
       submission_id: job.submissionId,

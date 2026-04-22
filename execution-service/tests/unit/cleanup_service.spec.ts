@@ -274,4 +274,45 @@ test.group('CleanupService — payload cleanup (Task 17)', (group) => {
 
     await assert.doesNotRejects(() => cleanupService.cleanupOldJobs(30))
   })
+
+  test('cleanupOrphanedPayloads removes payload dir for job that no longer exists', async ({
+    assert,
+  }) => {
+    const orphanDir = path.join(tmpPayloads, '9999')
+    await mkdir(orphanDir, { recursive: true })
+
+    await cleanupService.cleanupOrphanedPayloads(tmpPayloads)
+
+    assert.isFalse(await dirExists(orphanDir))
+  })
+
+  test('cleanupOrphanedPayloads keeps payload dir when job still exists in DB', async ({
+    assert,
+  }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { status: 'completed' })
+
+    const payloadDir = path.join(tmpPayloads, String(job.jobId))
+    await mkdir(payloadDir, { recursive: true })
+
+    await cleanupService.cleanupOrphanedPayloads(tmpPayloads)
+
+    assert.isTrue(await dirExists(payloadDir))
+  })
+
+  test('cleanupOrphanedPayloads skips non-numeric directory names', async ({ assert }) => {
+    const nonNumericDir = path.join(tmpPayloads, 'lost+found')
+    await mkdir(nonNumericDir, { recursive: true })
+
+    await cleanupService.cleanupOrphanedPayloads(tmpPayloads)
+
+    assert.isTrue(await dirExists(nonNumericDir))
+  })
+
+  test('cleanupOrphanedPayloads handles missing payloads directory gracefully', async ({
+    assert,
+  }) => {
+    const nonExistent = path.join(tmpdir(), `payloads-missing-${Date.now()}`)
+    await assert.doesNotRejects(() => cleanupService.cleanupOrphanedPayloads(nonExistent))
+  })
 })

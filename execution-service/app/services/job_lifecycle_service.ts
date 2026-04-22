@@ -38,7 +38,7 @@ export function buildPayloadUrl(jobId: number): string {
 }
 
 function buildPayloadMetadata(jobId: number, jobResult: JobResultPayloadFields) {
-  const hasPayload = jobResult.payloadPath !== null && jobResult.payloadPath !== undefined
+  const hasPayload = jobResult.payloadPath != null
   return {
     has_payload: hasPayload,
     payload_filename: jobResult.payloadFilename,

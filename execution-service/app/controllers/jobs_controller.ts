@@ -108,14 +108,12 @@ export default class JobsController {
     }
 
     // Defense-in-depth: resolve both the stored path and the expected payload directory
-    // and require the stored path to live inside it. Guards against DB tampering or
-    // unexpected writes producing an arbitrary file read via this endpoint.
+    // and require the stored path to live strictly inside it (not equal to the directory
+    // itself). Guards against DB tampering or unexpected writes producing an arbitrary
+    // file read via this endpoint.
     const expectedDir = path.resolve(fileService.getPayloadDirectory(jobId))
     const resolvedPath = path.resolve(jobResult.payloadPath)
-    const withinDir =
-      resolvedPath === expectedDir ||
-      resolvedPath.startsWith(expectedDir + path.sep)
-    if (!withinDir) {
+    if (!resolvedPath.startsWith(expectedDir + path.sep)) {
       logger.error(
         { jobId, payloadPath: jobResult.payloadPath, expectedDir },
         'Payload path is outside expected directory — refusing to serve'
@@ -125,12 +123,22 @@ export default class JobsController {
       })
     }
 
-    // Use fs.stat to discover size at request time rather than trusting the DB.
-    // Also narrows the TOCTOU window — the stream below attaches an error handler
-    // so concurrent cleanup still surfaces as PAYLOAD_DELETED if ENOENT slips in.
+    // Use fs.stat to discover size at request time rather than trusting the DB,
+    // and confirm the target is a regular file — refuse directories, symlinks, etc.
+    // The stream below also attaches an error handler so a cleanup race between the
+    // stat and the open still surfaces as ENOENT mid-stream.
     let currentSize: number
     try {
       const st = await stat(resolvedPath)
+      if (!st.isFile()) {
+        logger.error(
+          { jobId, payloadPath: resolvedPath },
+          'Payload path is not a regular file — refusing to serve'
+        )
+        return response.notFound({
+          error: { code: 'NO_PAYLOAD', message: 'No payload file for this job' },
+        })
+      }
       currentSize = st.size
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
@@ -141,8 +149,12 @@ export default class JobsController {
       throw err
     }
 
-    const filename = jobResult.payloadFilename ?? 'payload'
-    const safeFilename = filename.replace(/["\r\n]/g, '')
+    const rawFilename = jobResult.payloadFilename ?? 'payload'
+    // Restrict to a conservative allowlist to prevent header injection and odd client
+    // behavior from control chars / path separators. path.basename strips any directory
+    // components that slipped through (defense-in-depth: the filename is already just
+    // a basename from extractPayloadFile, but this is a security boundary).
+    const safeFilename = path.basename(rawFilename).replace(/[^A-Za-z0-9._ -]/g, '') || 'payload'
     response.header('Content-Type', 'application/octet-stream')
     response.header('Content-Disposition', `attachment; filename="${safeFilename}"`)
     response.header('Content-Length', String(currentSize))
