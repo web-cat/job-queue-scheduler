@@ -6,6 +6,7 @@ import Job from '#models/job'
 import JobResult from '#models/job_result'
 import fileService, { FileServiceError } from '#services/file_service'
 import logger from '@adonisjs/core/services/logger'
+import env from '#start/env'
 import type { MultipartFile } from '@adonisjs/core/bodyparser'
 import type { JobStatus } from '#models/job'
 
@@ -22,6 +23,24 @@ type MarkCompletedResults = {
   runtime_ms?: number | null
   pod_name?: string | null
   node_ip?: string | null
+  payload_path?: string | null
+  payload_filename?: string | null
+  payload_size_bytes?: number | null
+}
+
+type JobResultPayloadFields = Pick<
+  JobResult,
+  'payloadPath' | 'payloadFilename' | 'payloadSizeBytes'
+>
+
+function buildPayloadMetadata(jobId: number, jobResult: JobResultPayloadFields) {
+  const hasPayload = jobResult.payloadPath !== null && jobResult.payloadPath !== undefined
+  return {
+    has_payload: hasPayload,
+    payload_filename: jobResult.payloadFilename,
+    payload_size_bytes: jobResult.payloadSizeBytes,
+    payload_url: hasPayload ? `${env.get('APP_URL')}/api/v1/jobs/${jobId}/payload` : null,
+  }
 }
 
 type SubmitJobPayload = {
@@ -209,6 +228,7 @@ class JobLifecycleService {
           test_output: job.result.testOutput,
           exit_code: job.result.exitCode,
           runtime_ms: job.result.runtimeMs,
+          ...buildPayloadMetadata(jobId, job.result),
         }
       }
     }
@@ -245,6 +265,7 @@ class JobLifecycleService {
         test_output: jobResult.testOutput,
         exit_code: jobResult.exitCode,
         runtime_ms: jobResult.runtimeMs,
+        ...buildPayloadMetadata(jobId, jobResult),
       },
     }
   }
@@ -363,6 +384,9 @@ class JobLifecycleService {
           runtimeMs: results.runtime_ms ?? null,
           podName: results.pod_name ?? null,
           nodeIp: results.node_ip ?? null,
+          payloadPath: results.payload_path ?? null,
+          payloadFilename: results.payload_filename ?? null,
+          payloadSizeBytes: results.payload_size_bytes ?? null,
         },
         { client: trx }
       )

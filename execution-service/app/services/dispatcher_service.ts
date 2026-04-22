@@ -247,12 +247,20 @@ export class DispatcherService {
 
     const logs = await this.k8s.getJobLogs(podName).catch(() => null)
 
+    // Extract payload file from /grading/output/ before the finally{} below cleans the
+    // submission directory. Returns null when no payload exists or when extraction fails —
+    // grading itself succeeded, so we never fail the job on payload issues.
+    const payload = await this.files.extractPayloadFile(jobId)
+
     await this.lifecycle.markCompleted(
       jobId,
       {
         ...results,
         container_logs: truncate(logs, MAX_CONTAINER_LOGS_BYTES),
         pod_name: podName,
+        payload_path: payload?.path ?? null,
+        payload_filename: payload?.filename ?? null,
+        payload_size_bytes: payload?.sizeBytes ?? null,
       },
       durationSeconds
     )

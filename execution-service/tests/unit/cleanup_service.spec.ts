@@ -196,3 +196,82 @@ test.group('CleanupService — cleanupOrphanedFiles', (group) => {
     await assert.doesNotRejects(() => cleanupService.cleanupOrphanedFiles(nonExistent))
   })
 })
+
+test.group('CleanupService — payload cleanup (Task 17)', (group) => {
+  let tmpSubs: string
+  let tmpPayloads: string
+  let originalSubsEnv: string | undefined
+  let originalPayloadsEnv: string | undefined
+
+  group.each.setup(async () => {
+    await db.from('job_results').delete()
+    await db.from('jobs').delete()
+    await db.from('image_configs').delete()
+
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    tmpSubs = path.join(tmpdir(), `cleanup-subs-${suffix}`)
+    tmpPayloads = path.join(tmpdir(), `cleanup-payloads-${suffix}`)
+    await mkdir(tmpSubs, { recursive: true })
+    await mkdir(tmpPayloads, { recursive: true })
+
+    originalSubsEnv = process.env.SUBMISSIONS_PATH
+    originalPayloadsEnv = process.env.PAYLOADS_PATH
+    process.env.SUBMISSIONS_PATH = tmpSubs
+    process.env.PAYLOADS_PATH = tmpPayloads
+  })
+
+  group.each.teardown(async () => {
+    await rm(tmpSubs, { recursive: true, force: true })
+    await rm(tmpPayloads, { recursive: true, force: true })
+    if (originalSubsEnv === undefined) delete process.env.SUBMISSIONS_PATH
+    else process.env.SUBMISSIONS_PATH = originalSubsEnv
+    if (originalPayloadsEnv === undefined) delete process.env.PAYLOADS_PATH
+    else process.env.PAYLOADS_PATH = originalPayloadsEnv
+  })
+
+  test('cleanupOldJobs removes payload directory for old completed job', async ({ assert }) => {
+    const cfg = await createImageConfig()
+    const oldJob = await createJob(cfg.id, {
+      status: 'completed',
+      completedAt: DateTime.now().minus({ days: 31 }),
+    })
+
+    const payloadDir = path.join(tmpPayloads, String(oldJob.jobId))
+    await mkdir(payloadDir, { recursive: true })
+    const payloadFile = path.join(payloadDir, 'payload.zip')
+    const { writeFile } = await import('node:fs/promises')
+    await writeFile(payloadFile, 'old payload bytes')
+
+    await cleanupService.cleanupOldJobs(30)
+
+    assert.isFalse(await dirExists(payloadDir))
+  })
+
+  test('cleanupOldJobs keeps payload directory for recent completed job', async ({ assert }) => {
+    const cfg = await createImageConfig()
+    const recentJob = await createJob(cfg.id, {
+      status: 'completed',
+      completedAt: DateTime.now().minus({ days: 5 }),
+    })
+
+    const payloadDir = path.join(tmpPayloads, String(recentJob.jobId))
+    await mkdir(payloadDir, { recursive: true })
+    const { writeFile } = await import('node:fs/promises')
+    await writeFile(path.join(payloadDir, 'payload.zip'), 'recent payload')
+
+    await cleanupService.cleanupOldJobs(30)
+
+    assert.isTrue(await dirExists(payloadDir))
+  })
+
+  test('cleanupOldJobs does not fail when payload directory is absent', async ({ assert }) => {
+    const cfg = await createImageConfig()
+    await createJob(cfg.id, {
+      status: 'completed',
+      completedAt: DateTime.now().minus({ days: 31 }),
+    })
+    // Intentionally no payload directory created
+
+    await assert.doesNotRejects(() => cleanupService.cleanupOldJobs(30))
+  })
+})

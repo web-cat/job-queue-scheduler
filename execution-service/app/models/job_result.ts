@@ -48,6 +48,15 @@ export default class JobResult extends BaseModel {
   @column()
   declare nodeIp: string | null
 
+  @column()
+  declare payloadPath: string | null
+
+  @column()
+  declare payloadFilename: string | null
+
+  @column()
+  declare payloadSizeBytes: number | null
+
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
 

@@ -1,5 +1,8 @@
+import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import type { HttpContext } from '@adonisjs/core/http'
 import { errors } from '@adonisjs/http-server'
+import JobResult from '#models/job_result'
 import jobLifecycleService from '#services/job_lifecycle_service'
 import { createJobValidator, listJobsValidator } from '#validators/job_validator'
 
@@ -77,6 +80,43 @@ export default class JobsController {
     }
 
     return jobLifecycleService.listJobs(filters, pagination)
+  }
+
+  async payload({ params, response }: HttpContext) {
+    const jobId = Number(params.id)
+    const jobResult = await JobResult.findBy('job_id', jobId)
+
+    if (!jobResult) {
+      return response.notFound({
+        error: { code: 'JOB_NOT_FOUND', message: `Job with ID ${params.id} not found` },
+      })
+    }
+
+    if (!jobResult.payloadPath) {
+      return response.notFound({
+        error: { code: 'NO_PAYLOAD', message: 'No payload file for this job' },
+      })
+    }
+
+    try {
+      await stat(jobResult.payloadPath)
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        return response.notFound({
+          error: { code: 'PAYLOAD_DELETED', message: 'Payload file has been cleaned up' },
+        })
+      }
+      throw err
+    }
+
+    const filename = jobResult.payloadFilename ?? 'payload'
+    const safeFilename = filename.replace(/["\r\n]/g, '')
+    response.header('Content-Type', 'application/octet-stream')
+    response.header('Content-Disposition', `attachment; filename="${safeFilename}"`)
+    if (jobResult.payloadSizeBytes !== null) {
+      response.header('Content-Length', String(jobResult.payloadSizeBytes))
+    }
+    return response.stream(createReadStream(jobResult.payloadPath))
   }
 
   async destroy({ params, response }: HttpContext) {

@@ -1,4 +1,4 @@
-import { access, constants, mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { access, constants, copyFile, mkdir, readdir, readFile, rename, rm, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { Dirent } from 'node:fs'
 import type { MultipartFile } from '@adonisjs/core/bodyparser'
@@ -76,7 +76,9 @@ const KNOWN_RESULT_KEYS = new Set([
 ])
 
 const DEFAULT_SUBMISSIONS_PATH = '/data/submissions'
+const DEFAULT_PAYLOADS_PATH = '/data/payloads'
 const DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+const DEFAULT_MAX_PAYLOAD_BYTES = 100 * 1024 * 1024
 const RESULTS_JSON_NAME = 'results.json'
 const MAX_RESULTS_FILE_BYTES = 1024 * 1024
 const TRUNCATE_FIELD_CHARS = 500_000
@@ -91,6 +93,13 @@ function parseMaxUploadBytes(): number {
   if (!raw) return DEFAULT_MAX_UPLOAD_BYTES
   const n = Number(raw)
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_UPLOAD_BYTES
+}
+
+function parseMaxPayloadBytes(): number {
+  const raw = process.env.MAX_PAYLOAD_BYTES
+  if (!raw) return DEFAULT_MAX_PAYLOAD_BYTES
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_PAYLOAD_BYTES
 }
 
 /**
@@ -175,8 +184,17 @@ async function directoryDiskUsageBytes(dir: string): Promise<number> {
 
 export type FileServiceOptions = {
   submissionsPath?: string
+  payloadsPath?: string
   /** When set (e.g. in tests), skips `MAX_SUBMISSION_UPLOAD_BYTES` env. */
   maxUploadBytes?: number
+  /** When set (e.g. in tests), skips `MAX_PAYLOAD_BYTES` env. */
+  maxPayloadBytes?: number
+}
+
+export type ExtractedPayload = {
+  path: string
+  filename: string
+  sizeBytes: number
 }
 
 export class FileService {
@@ -186,12 +204,24 @@ export class FileService {
     return this.options?.submissionsPath ?? process.env.SUBMISSIONS_PATH ?? DEFAULT_SUBMISSIONS_PATH
   }
 
+  private get payloadsPath(): string {
+    return this.options?.payloadsPath ?? process.env.PAYLOADS_PATH ?? DEFAULT_PAYLOADS_PATH
+  }
+
   private get maxTotalUploadBytes(): number {
     return this.options?.maxUploadBytes ?? parseMaxUploadBytes()
   }
 
+  private get maxPayloadBytes(): number {
+    return this.options?.maxPayloadBytes ?? parseMaxPayloadBytes()
+  }
+
   get submissionsBasePath(): string {
     return this.submissionsPath
+  }
+
+  get payloadsBasePath(): string {
+    return this.payloadsPath
   }
 
   getInputPath(jobId: number): string {
@@ -200,6 +230,10 @@ export class FileService {
 
   getOutputPath(jobId: number): string {
     return path.join(this.submissionsPath, String(jobId), 'output')
+  }
+
+  getPayloadDirectory(jobId: number): string {
+    return path.join(this.payloadsPath, String(jobId))
   }
 
   /**
@@ -257,6 +291,140 @@ export class FileService {
         return
       }
       logFsError('cleanupSubmission', err)
+    }
+  }
+
+  /**
+   * Scans the grading output directory for any file other than `results.json` and moves it
+   * to a persistent payload directory. Returns null when no candidate exists, the candidate
+   * exceeds {@link MAX_PAYLOAD_BYTES}, or any FS error occurs — grading itself already succeeded,
+   * so we never throw from this path.
+   *
+   * If multiple candidates exist we pick the largest and warn.
+   */
+  async extractPayloadFile(jobId: number): Promise<ExtractedPayload | null> {
+    const outputPath = this.getOutputPath(jobId)
+
+    let entries: Dirent[]
+    try {
+      entries = await readdir(outputPath, { withFileTypes: true })
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') return null
+      logFsError('extractPayloadFile.readdir', err)
+      return null
+    }
+
+    const candidateNames = entries
+      .filter((e) => e.isFile() && e.name !== RESULTS_JSON_NAME)
+      .map((e) => e.name)
+
+    if (candidateNames.length === 0) return null
+
+    const candidates: { name: string; size: number }[] = []
+    for (const name of candidateNames) {
+      try {
+        const st = await stat(path.join(outputPath, name))
+        candidates.push({ name, size: st.size })
+      } catch (err) {
+        logFsError('extractPayloadFile.stat', err)
+      }
+    }
+
+    if (candidates.length === 0) return null
+
+    candidates.sort((a, b) => b.size - a.size)
+    const chosen = candidates[0]
+
+    if (candidates.length > 1) {
+      logger.warn(
+        { jobId, candidates: candidates.map((c) => c.name), chosen: chosen.name },
+        'Multiple non-results files in output directory — selecting largest as payload'
+      )
+    }
+
+    const maxBytes = this.maxPayloadBytes
+    if (chosen.size > maxBytes) {
+      logger.warn(
+        { jobId, filename: chosen.name, sizeBytes: chosen.size, maxBytes },
+        'Payload file exceeds max size — not storing'
+      )
+      return null
+    }
+
+    const srcPath = path.join(outputPath, chosen.name)
+    const dstDir = this.getPayloadDirectory(jobId)
+    const dstPath = path.join(dstDir, chosen.name)
+
+    try {
+      await mkdir(dstDir, { recursive: true, mode: 0o755 })
+    } catch (err) {
+      logFsError('extractPayloadFile.mkdir', err)
+      return null
+    }
+
+    try {
+      await rename(srcPath, dstPath)
+    } catch (err: any) {
+      if (err?.code === 'EXDEV') {
+        // Cross-device (e.g., separate k8s volume mounts). Copy + unlink as fallback.
+        try {
+          await copyFile(srcPath, dstPath)
+          await unlink(srcPath)
+        } catch (copyErr) {
+          logFsError('extractPayloadFile.copyFallback', copyErr)
+          await rm(dstPath, { force: true }).catch(() => undefined)
+          return null
+        }
+      } else {
+        logFsError('extractPayloadFile.rename', err)
+        return null
+      }
+    }
+
+    logger.info(
+      { jobId, filename: chosen.name, sizeBytes: chosen.size, path: dstPath },
+      'Extracted payload file'
+    )
+
+    return { path: dstPath, filename: chosen.name, sizeBytes: chosen.size }
+  }
+
+  /**
+   * Returns the on-disk path of the stored payload for `jobId` if exactly one file exists
+   * under `{payloadsPath}/{jobId}/`, otherwise null. Callers should still confirm the path
+   * matches what's recorded in `job_results.payload_path`.
+   */
+  async getPayloadFilePath(jobId: number): Promise<string | null> {
+    const dir = this.getPayloadDirectory(jobId)
+    let entries: Dirent[]
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') return null
+      logFsError('getPayloadFilePath.readdir', err)
+      return null
+    }
+
+    const files = entries.filter((e) => e.isFile())
+    if (files.length === 0) return null
+    return path.join(dir, files[0].name)
+  }
+
+  /**
+   * Recursively deletes the payload directory for `jobId`. ENOENT is treated as already
+   * cleaned up. Other errors are logged; this method does not throw.
+   */
+  async cleanupPayload(jobId: number): Promise<void> {
+    const dir = this.getPayloadDirectory(jobId)
+    try {
+      await rm(dir, { recursive: true, force: true })
+      logger.info({ jobId, path: dir }, 'Cleaned up payload directory')
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        logger.info({ jobId, path: dir }, 'Payload directory already absent during cleanup')
+        return
+      }
+      logFsError('cleanupPayload', err)
     }
   }
 

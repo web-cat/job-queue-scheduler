@@ -214,3 +214,186 @@ test.group('FileService — integration', (group) => {
     }
   })
 })
+
+test.group('FileService — payload handling', (group) => {
+  let subsBase: string
+  let payloadsBase: string
+  let svc: FileService
+
+  group.each.setup(async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    subsBase = path.join(tmpdir(), `file-svc-subs-${suffix}`)
+    payloadsBase = path.join(tmpdir(), `file-svc-payloads-${suffix}`)
+    await mkdir(subsBase, { recursive: true })
+    await mkdir(payloadsBase, { recursive: true })
+    svc = new FileService({
+      submissionsPath: subsBase,
+      payloadsPath: payloadsBase,
+      maxPayloadBytes: 1024,
+    })
+  })
+
+  group.each.teardown(async () => {
+    await rm(subsBase, { recursive: true, force: true })
+    await rm(payloadsBase, { recursive: true, force: true })
+  })
+
+  test('extractPayloadFile returns null when output directory is missing', async ({ assert }) => {
+    const result = await svc.extractPayloadFile(42)
+    assert.isNull(result)
+  })
+
+  test('extractPayloadFile returns null when only results.json exists', async ({ assert }) => {
+    const out = path.join(subsBase, '1', 'output')
+    await mkdir(out, { recursive: true })
+    await writeFile(path.join(out, 'results.json'), '{}')
+
+    const result = await svc.extractPayloadFile(1)
+    assert.isNull(result)
+  })
+
+  test('extractPayloadFile moves single payload file to payloads directory', async ({ assert }) => {
+    const out = path.join(subsBase, '2', 'output')
+    await mkdir(out, { recursive: true })
+    await writeFile(path.join(out, 'results.json'), '{}')
+    await writeFile(path.join(out, 'payload.zip'), 'binary-ish-content')
+
+    const result = await svc.extractPayloadFile(2)
+
+    assert.isNotNull(result)
+    assert.equal(result!.filename, 'payload.zip')
+    assert.equal(result!.sizeBytes, 'binary-ish-content'.length)
+    assert.equal(result!.path, path.join(payloadsBase, '2', 'payload.zip'))
+
+    // File exists at destination
+    const destStat = await stat(result!.path)
+    assert.isTrue(destStat.isFile())
+
+    // Original file gone from output dir, results.json remains
+    await assert.rejects(() => stat(path.join(out, 'payload.zip')))
+    const resultsStat = await stat(path.join(out, 'results.json'))
+    assert.isTrue(resultsStat.isFile())
+  })
+
+  test('extractPayloadFile picks largest file when multiple candidates exist', async ({ assert }) => {
+    const out = path.join(subsBase, '3', 'output')
+    await mkdir(out, { recursive: true })
+    await writeFile(path.join(out, 'results.json'), '{}')
+    await writeFile(path.join(out, 'small.txt'), 'tiny')
+    await writeFile(path.join(out, 'large.bin'), 'x'.repeat(500))
+    await writeFile(path.join(out, 'medium.log'), 'y'.repeat(100))
+
+    const result = await svc.extractPayloadFile(3)
+
+    assert.isNotNull(result)
+    assert.equal(result!.filename, 'large.bin')
+    assert.equal(result!.sizeBytes, 500)
+    assert.equal(result!.path, path.join(payloadsBase, '3', 'large.bin'))
+
+    // Only the largest was moved; the others stay in the output dir (they'll be cleaned
+    // with the submission directory). This is acceptable behavior.
+    const destStat = await stat(result!.path)
+    assert.isTrue(destStat.isFile())
+  })
+
+  test('extractPayloadFile returns null and does not move when file exceeds max size', async ({
+    assert,
+  }) => {
+    const out = path.join(subsBase, '4', 'output')
+    await mkdir(out, { recursive: true })
+    // maxPayloadBytes was set to 1024 in setup
+    await writeFile(path.join(out, 'huge.bin'), 'x'.repeat(2048))
+
+    const result = await svc.extractPayloadFile(4)
+    assert.isNull(result)
+
+    // Source file must remain untouched — we did not move it
+    const srcStat = await stat(path.join(out, 'huge.bin'))
+    assert.equal(srcStat.size, 2048)
+
+    // Destination directory must not exist
+    await assert.rejects(() => stat(path.join(payloadsBase, '4')))
+  })
+
+  test('extractPayloadFile ignores subdirectories in output dir', async ({ assert }) => {
+    const out = path.join(subsBase, '5', 'output')
+    await mkdir(out, { recursive: true })
+    await mkdir(path.join(out, 'subdir'), { recursive: true })
+    await writeFile(path.join(out, 'subdir', 'nested.txt'), 'ignored')
+    await writeFile(path.join(out, 'results.json'), '{}')
+
+    const result = await svc.extractPayloadFile(5)
+    assert.isNull(result)
+  })
+
+  test('extractPayloadFile accepts arbitrary non-results filename', async ({ assert }) => {
+    const out = path.join(subsBase, '6', 'output')
+    await mkdir(out, { recursive: true })
+    await writeFile(path.join(out, 'results.json'), '{}')
+    await writeFile(path.join(out, 'output.tar.gz'), 'payload-data')
+
+    const result = await svc.extractPayloadFile(6)
+
+    assert.isNotNull(result)
+    assert.equal(result!.filename, 'output.tar.gz')
+  })
+
+  test('getPayloadFilePath returns null when directory does not exist', async ({ assert }) => {
+    const result = await svc.getPayloadFilePath(999)
+    assert.isNull(result)
+  })
+
+  test('getPayloadFilePath returns stored file path', async ({ assert }) => {
+    const dir = path.join(payloadsBase, '7')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'payload.zip'), 'data')
+
+    const result = await svc.getPayloadFilePath(7)
+    assert.equal(result, path.join(dir, 'payload.zip'))
+  })
+
+  test('getPayloadFilePath returns null when directory is empty', async ({ assert }) => {
+    const dir = path.join(payloadsBase, '8')
+    await mkdir(dir, { recursive: true })
+
+    const result = await svc.getPayloadFilePath(8)
+    assert.isNull(result)
+  })
+
+  test('cleanupPayload removes payload directory', async ({ assert }) => {
+    const dir = path.join(payloadsBase, '9')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'payload.zip'), 'data')
+
+    await svc.cleanupPayload(9)
+
+    await assert.rejects(() => stat(dir))
+  })
+
+  test('cleanupPayload does not throw when directory is absent', async ({ assert }) => {
+    await assert.doesNotRejects(() => svc.cleanupPayload(404404))
+  })
+
+  test('extractPayloadFile followed by getPayloadFilePath returns same path', async ({
+    assert,
+  }) => {
+    const out = path.join(subsBase, '10', 'output')
+    await mkdir(out, { recursive: true })
+    await writeFile(path.join(out, 'results.json'), '{}')
+    await writeFile(path.join(out, 'deliverable.zip'), 'contents')
+
+    const extracted = await svc.extractPayloadFile(10)
+    assert.isNotNull(extracted)
+
+    const looked = await svc.getPayloadFilePath(10)
+    assert.equal(looked, extracted!.path)
+  })
+
+  test('getPayloadDirectory returns correct path', async ({ assert }) => {
+    assert.equal(svc.getPayloadDirectory(77), path.join(payloadsBase, '77'))
+  })
+
+  test('payloadsBasePath exposes configured root', async ({ assert }) => {
+    assert.equal(svc.payloadsBasePath, payloadsBase)
+  })
+})

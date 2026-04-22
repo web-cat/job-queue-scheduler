@@ -25,9 +25,11 @@ class CleanupService {
       // Delete DB rows — FK cascades handle job_results and callback_log
       await Job.query().whereIn('job_id', jobIds).delete()
 
-      // Clean up submission files — non-critical, cleanupOrphanedFiles catches any misses
+      // Clean up submission files — non-critical, cleanupOrphanedFiles catches any misses.
+      // Also delete persistent payload files since their retention aligns with job retention.
       for (const jobId of jobIds) {
         await fileService.cleanupSubmission(jobId)
+        await fileService.cleanupPayload(jobId)
       }
 
       logger.info(
