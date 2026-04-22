@@ -315,4 +315,33 @@ test.group('CleanupService — payload cleanup (Task 17)', (group) => {
     const nonExistent = path.join(tmpdir(), `payloads-missing-${Date.now()}`)
     await assert.doesNotRejects(() => cleanupService.cleanupOrphanedPayloads(nonExistent))
   })
+
+  test('cleanupOrphanedPayloads honors the passed basePath (not the singleton root)', async ({
+    assert,
+  }) => {
+    // Point the env/singleton at a separate directory so a basePath-ignoring
+    // implementation would target the wrong root and leave the orphan behind.
+    const altRoot = path.join(tmpdir(), `cleanup-alt-root-${Date.now()}`)
+    await mkdir(altRoot, { recursive: true })
+    const prev = process.env.PAYLOADS_PATH
+    process.env.PAYLOADS_PATH = altRoot
+
+    try {
+      const orphanDir = path.join(tmpPayloads, '12345')
+      await mkdir(orphanDir, { recursive: true })
+
+      // A same-named dir under the singleton root must NOT be touched.
+      const altSameIdDir = path.join(altRoot, '12345')
+      await mkdir(altSameIdDir, { recursive: true })
+
+      await cleanupService.cleanupOrphanedPayloads(tmpPayloads)
+
+      assert.isFalse(await dirExists(orphanDir))
+      assert.isTrue(await dirExists(altSameIdDir))
+    } finally {
+      if (prev === undefined) delete process.env.PAYLOADS_PATH
+      else process.env.PAYLOADS_PATH = prev
+      await rm(altRoot, { recursive: true, force: true })
+    }
+  })
 })

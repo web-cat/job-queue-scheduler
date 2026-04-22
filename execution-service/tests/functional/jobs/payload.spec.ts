@@ -1,5 +1,5 @@
 import { test } from '@japa/runner'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DateTime } from 'luxon'
@@ -318,5 +318,48 @@ test.group('GET /api/v1/jobs/:id/payload', (group) => {
     assert.notInclude(disposition, '\r')
     assert.notInclude(disposition, '\n')
     assert.match(disposition, /filename="weirdnamefile\.zip"/)
+  })
+
+  test('returns 404 NO_PAYLOAD when payload path is a symlink to outside the payloads root', async ({ client, assert }) => {
+    const cfg = await ensureImageConfig()
+    const job = await createCompletedJob(cfg.id, path.join(tmpBase, 'source'))
+
+    // Create a real file outside the payloads root, then a symlink inside the per-job
+    // payload dir that points at it. The inside-path startsWith check passes, but the
+    // lstat / realpath defenses should refuse to serve.
+    const secretDir = path.join(tmpBase, 'secret')
+    await mkdir(secretDir, { recursive: true })
+    const secretFile = path.join(secretDir, 'secret.txt')
+    await writeFile(secretFile, 'SECRET')
+
+    const payloadDir = path.join(tmpBase, String(job.jobId))
+    await mkdir(payloadDir, { recursive: true })
+    const linkPath = path.join(payloadDir, 'payload.zip')
+    await symlink(secretFile, linkPath)
+
+    await JobResult.create({
+      jobId: job.jobId,
+      correctnessScore: null,
+      toolScore: null,
+      comments: null,
+      commentFormat: null,
+      testOutput: null,
+      containerLogs: null,
+      exitCode: 0,
+      cpuUsage: null,
+      ramUsage: null,
+      runtimeMs: 1,
+      podName: null,
+      nodeIp: null,
+      payloadPath: linkPath,
+      payloadFilename: 'payload.zip',
+      payloadSizeBytes: 6,
+    })
+
+    const response = await client.get(`/api/v1/jobs/${job.jobId}/payload`)
+
+    response.assertStatus(404)
+    const body = (await response.body()) as any
+    assert.equal(body.error.code, 'NO_PAYLOAD')
   })
 })

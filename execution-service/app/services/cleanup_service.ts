@@ -1,4 +1,5 @@
-import { readdir } from 'node:fs/promises'
+import { readdir, rm } from 'node:fs/promises'
+import path from 'node:path'
 import { DateTime } from 'luxon'
 import Job from '#models/job'
 import fileService from '#services/file_service'
@@ -98,8 +99,15 @@ class CleanupService {
       let cleaned = 0
       for (const jobId of jobIds) {
         if (!existingSet.has(jobId)) {
-          await fileService.cleanupPayload(jobId)
-          cleaned++
+          const dir = path.join(payloadsPath, String(jobId))
+          try {
+            await rm(dir, { recursive: true, force: true })
+            cleaned++
+          } catch (err: any) {
+            if (err?.code !== 'ENOENT') {
+              logger.warn({ jobId, path: dir, err }, 'Failed to remove orphaned payload directory')
+            }
+          }
         }
       }
 
