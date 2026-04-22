@@ -187,6 +187,131 @@ test.group('JobLifecycleService — cancelJob (file cleanup)', (group) => {
   })
 })
 
+test.group('JobLifecycleService — payload metadata', (group) => {
+  group.each.setup(async () => {
+    await db.from('job_results').delete()
+    await db.from('jobs').delete()
+    await db.from('image_configs').delete()
+  })
+
+  test('markCompleted persists payload fields to job_results', async ({ assert }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { status: 'processing' })
+
+    await jobLifecycleService.markCompleted(
+      job.jobId,
+      {
+        correctness_score: 88,
+        exit_code: 0,
+        payload_path: '/data/payloads/1/output.zip',
+        payload_filename: 'output.zip',
+        payload_size_bytes: 2048,
+      },
+      10
+    )
+
+    const result = await JobResult.findByOrFail('job_id', job.jobId)
+    assert.equal(result.payloadPath, '/data/payloads/1/output.zip')
+    assert.equal(result.payloadFilename, 'output.zip')
+    assert.equal(Number(result.payloadSizeBytes), 2048)
+  })
+
+  test('markCompleted stores nulls when payload fields are omitted', async ({ assert }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { status: 'processing' })
+
+    await jobLifecycleService.markCompleted(job.jobId, { exit_code: 0 }, 5)
+
+    const result = await JobResult.findByOrFail('job_id', job.jobId)
+    assert.isNull(result.payloadPath)
+    assert.isNull(result.payloadFilename)
+    assert.isNull(result.payloadSizeBytes)
+  })
+
+  test('getJobResults includes payload metadata with has_payload=true and url', async ({
+    assert,
+  }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { status: 'processing' })
+
+    await jobLifecycleService.markCompleted(
+      job.jobId,
+      {
+        correctness_score: 75,
+        exit_code: 0,
+        payload_path: '/data/payloads/42/payload.zip',
+        payload_filename: 'payload.zip',
+        payload_size_bytes: 512,
+      },
+      5
+    )
+
+    const response = await jobLifecycleService.getJobResults(job.jobId)
+    assert.isTrue(response.found)
+    assert.isNotNull(response.data)
+    const data = response.data as any
+    assert.equal(data.has_payload, true)
+    assert.equal(data.payload_filename, 'payload.zip')
+    assert.equal(Number(data.payload_size_bytes), 512)
+    assert.isString(data.payload_url)
+    assert.include(data.payload_url, `/api/v1/jobs/${job.jobId}/payload`)
+  })
+
+  test('getJobResults returns has_payload=false and null url when no payload stored', async ({
+    assert,
+  }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { status: 'processing' })
+
+    await jobLifecycleService.markCompleted(job.jobId, { exit_code: 0 }, 5)
+
+    const response = await jobLifecycleService.getJobResults(job.jobId)
+    const data = response.data as any
+    assert.equal(data.has_payload, false)
+    assert.isNull(data.payload_url)
+    assert.isNull(data.payload_filename)
+    assert.isNull(data.payload_size_bytes)
+  })
+
+  test('getJob returns payload metadata in result when completed with payload', async ({
+    assert,
+  }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { status: 'processing' })
+
+    await jobLifecycleService.markCompleted(
+      job.jobId,
+      {
+        exit_code: 0,
+        payload_path: '/data/payloads/x/p.tar',
+        payload_filename: 'p.tar',
+        payload_size_bytes: 99,
+      },
+      5
+    )
+
+    const view = (await jobLifecycleService.getJob(job.jobId)) as any
+    assert.isNotNull(view.result)
+    assert.equal(view.result.has_payload, true)
+    assert.equal(view.result.payload_filename, 'p.tar')
+    assert.equal(Number(view.result.payload_size_bytes), 99)
+    assert.include(view.result.payload_url, `/api/v1/jobs/${job.jobId}/payload`)
+  })
+
+  test('getJob includes has_payload=false for completed job without payload', async ({
+    assert,
+  }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { status: 'processing' })
+
+    await jobLifecycleService.markCompleted(job.jobId, { exit_code: 0 }, 5)
+
+    const view = (await jobLifecycleService.getJob(job.jobId)) as any
+    assert.equal(view.result.has_payload, false)
+    assert.isNull(view.result.payload_url)
+  })
+})
+
 test.group('JobLifecycleService — getQueuePosition', (group) => {
   group.each.setup(async () => {
     await db.from('jobs').delete()

@@ -476,3 +476,110 @@ test.group('CallbackService — retryPendingCallbacks', (group) => {
     assert.lengthOf(calls, 0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Payload metadata in webhook body (Task 17)
+// ---------------------------------------------------------------------------
+
+test.group('CallbackService — payload metadata in webhook body', (group) => {
+  group.each.setup(async () => {
+    await db.from('callback_log').delete()
+    await db.from('job_results').delete()
+    await db.from('jobs').delete()
+    await db.from('image_configs').delete()
+  })
+
+  test('includes has_payload=true and payload_url when a payload was stored', async ({
+    assert,
+  }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
+    await JobResult.create({
+      jobId: job.jobId,
+      correctnessScore: 90,
+      toolScore: 85,
+      comments: 'ok',
+      commentFormat: 0,
+      testOutput: 'ok',
+      exitCode: 0,
+      runtimeMs: 5000,
+      payloadPath: '/data/payloads/1/out.zip',
+      payloadFilename: 'out.zip',
+      payloadSizeBytes: 4096,
+    })
+
+    const { calls, restore } = mockFetch({ ok: true, status: 200 })
+    try {
+      await callbackService.deliverResult(job.jobId)
+    } finally {
+      restore()
+    }
+
+    assert.lengthOf(calls, 1)
+    const body = calls[0].body as Record<string, unknown>
+    assert.equal(body.has_payload, true)
+    assert.equal(body.payload_filename, 'out.zip')
+    assert.equal(Number(body.payload_size_bytes), 4096)
+    assert.isString(body.payload_url)
+    assert.include(String(body.payload_url), `/api/v1/jobs/${job.jobId}/payload`)
+
+    // Must not contain a double slash between host and path, regardless of
+    // whether APP_URL ends in a trailing slash.
+    const pathPart = String(body.payload_url).replace(/^https?:\/\/[^/]+/, '')
+    assert.notMatch(pathPart, /^\/\//)
+  })
+
+  test('includes has_payload=false and null payload_url when no payload was stored', async ({
+    assert,
+  }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
+    await JobResult.create({
+      jobId: job.jobId,
+      correctnessScore: 70,
+      exitCode: 0,
+      runtimeMs: 3000,
+      // payloadPath/filename/size all omitted (null)
+    })
+
+    const { calls, restore } = mockFetch({ ok: true, status: 200 })
+    try {
+      await callbackService.deliverResult(job.jobId)
+    } finally {
+      restore()
+    }
+
+    assert.lengthOf(calls, 1)
+    const body = calls[0].body as Record<string, unknown>
+    assert.equal(body.has_payload, false)
+    assert.isNull(body.payload_url)
+    assert.isNull(body.payload_filename)
+    assert.isNull(body.payload_size_bytes)
+  })
+
+  test('does not include raw payload file contents in webhook body', async ({ assert }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { callbackUrl: 'https://example.com/webhook' })
+    await JobResult.create({
+      jobId: job.jobId,
+      exitCode: 0,
+      runtimeMs: 1000,
+      payloadPath: '/data/payloads/1/out.zip',
+      payloadFilename: 'out.zip',
+      payloadSizeBytes: 4096,
+    })
+
+    const { calls, restore } = mockFetch({ ok: true, status: 200 })
+    try {
+      await callbackService.deliverResult(job.jobId)
+    } finally {
+      restore()
+    }
+
+    const body = calls[0].body as Record<string, unknown>
+    // Only metadata fields, no raw bytes/base64 fields
+    assert.notProperty(body, 'payload')
+    assert.notProperty(body, 'payload_contents')
+    assert.notProperty(body, 'payload_base64')
+  })
+})

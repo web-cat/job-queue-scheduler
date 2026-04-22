@@ -36,6 +36,7 @@ router.post('/api/v1/jobs', [JobsController, 'store'])
 router.get('/api/v1/jobs', [JobsController, 'index'])
 router.get('/api/v1/jobs/:id', [JobsController, 'show'])
 router.get('/api/v1/jobs/:id/results', [JobsController, 'results'])
+router.get('/api/v1/jobs/:id/payload', [JobsController, 'payload'])
 router.delete('/api/v1/jobs/:id', [JobsController, 'destroy'])
 
 // Queue (Task 5)

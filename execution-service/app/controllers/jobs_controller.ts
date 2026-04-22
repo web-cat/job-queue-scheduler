@@ -1,5 +1,12 @@
+import path from 'node:path'
+import { createReadStream } from 'node:fs'
+import { lstat, realpath } from 'node:fs/promises'
 import type { HttpContext } from '@adonisjs/core/http'
 import { errors } from '@adonisjs/http-server'
+import logger from '@adonisjs/core/services/logger'
+import Job from '#models/job'
+import JobResult from '#models/job_result'
+import fileService from '#services/file_service'
 import jobLifecycleService from '#services/job_lifecycle_service'
 import { createJobValidator, listJobsValidator } from '#validators/job_validator'
 
@@ -77,6 +84,118 @@ export default class JobsController {
     }
 
     return jobLifecycleService.listJobs(filters, pagination)
+  }
+
+  async payload({ params, response }: HttpContext) {
+    const jobId = Number(params.id)
+    const job = await Job.find(jobId)
+
+    if (!job) {
+      return response.notFound({
+        error: { code: 'JOB_NOT_FOUND', message: `Job with ID ${params.id} not found` },
+      })
+    }
+
+    if (job.status !== 'completed') {
+      return response.accepted({ status: job.status })
+    }
+
+    const jobResult = await JobResult.findBy('job_id', jobId)
+    if (!jobResult || !jobResult.payloadPath) {
+      return response.notFound({
+        error: { code: 'NO_PAYLOAD', message: 'No payload file for this job' },
+      })
+    }
+
+    // Defense-in-depth: resolve both the stored path and the expected payload directory
+    // and require the stored path to live strictly inside it (not equal to the directory
+    // itself). Guards against DB tampering or unexpected writes producing an arbitrary
+    // file read via this endpoint.
+    const expectedDir = path.resolve(fileService.getPayloadDirectory(jobId))
+    const resolvedPath = path.resolve(jobResult.payloadPath)
+    if (!resolvedPath.startsWith(expectedDir + path.sep)) {
+      logger.error(
+        { jobId, payloadPath: jobResult.payloadPath, expectedDir },
+        'Payload path is outside expected directory — refusing to serve'
+      )
+      return response.notFound({
+        error: { code: 'NO_PAYLOAD', message: 'No payload file for this job' },
+      })
+    }
+
+    // Use lstat (not stat) to discover size at request time and reject symlinks outright —
+    // a symlink placed inside the expected payload directory would satisfy the startsWith
+    // check above and then let createReadStream follow it to a file outside the payloads
+    // root. Also refuse directories, sockets, devices, etc.
+    // The stream below attaches an error handler so a cleanup race between the lstat
+    // and the open still surfaces as ENOENT mid-stream.
+    let currentSize: number
+    try {
+      const st = await lstat(resolvedPath)
+      if (!st.isFile()) {
+        logger.error(
+          { jobId, payloadPath: resolvedPath },
+          'Payload path is not a regular file — refusing to serve'
+        )
+        return response.notFound({
+          error: { code: 'NO_PAYLOAD', message: 'No payload file for this job' },
+        })
+      }
+      currentSize = st.size
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        return response.notFound({
+          error: { code: 'PAYLOAD_DELETED', message: 'Payload file has been cleaned up' },
+        })
+      }
+      throw err
+    }
+
+    // Belt-and-suspenders: resolve any symlinks along the path (including ancestor
+    // directory symlinks) and require the canonical path to still live inside the
+    // expected directory. Protects against an attacker swapping a parent directory
+    // for a symlink pointing elsewhere.
+    let canonicalPath: string
+    try {
+      canonicalPath = await realpath(resolvedPath)
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        return response.notFound({
+          error: { code: 'PAYLOAD_DELETED', message: 'Payload file has been cleaned up' },
+        })
+      }
+      throw err
+    }
+    const canonicalExpectedDir = await realpath(expectedDir).catch(() => expectedDir)
+    if (!canonicalPath.startsWith(canonicalExpectedDir + path.sep)) {
+      logger.error(
+        { jobId, canonicalPath, canonicalExpectedDir },
+        'Canonical payload path escapes expected directory — refusing to serve'
+      )
+      return response.notFound({
+        error: { code: 'NO_PAYLOAD', message: 'No payload file for this job' },
+      })
+    }
+
+    const rawFilename = jobResult.payloadFilename ?? 'payload'
+    // Restrict to a conservative allowlist to prevent header injection and odd client
+    // behavior from control chars / path separators. path.basename strips any directory
+    // components that slipped through (defense-in-depth: the filename is already just
+    // a basename from extractPayloadFile, but this is a security boundary).
+    const safeFilename = path.basename(rawFilename).replace(/[^A-Za-z0-9._ -]/g, '') || 'payload'
+    response.header('Content-Type', 'application/octet-stream')
+    response.header('Content-Disposition', `attachment; filename="${safeFilename}"`)
+    response.header('Content-Length', String(currentSize))
+
+    const stream = createReadStream(canonicalPath)
+    stream.on('error', (err: any) => {
+      if (err?.code === 'ENOENT') {
+        logger.warn({ jobId, payloadPath: canonicalPath }, 'Payload vanished mid-stream')
+      } else {
+        logger.error({ jobId, err }, 'Error while streaming payload')
+      }
+    })
+    return response.stream(stream)
   }
 
   async destroy({ params, response }: HttpContext) {
