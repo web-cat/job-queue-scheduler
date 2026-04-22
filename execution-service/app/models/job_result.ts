@@ -54,7 +54,18 @@ export default class JobResult extends BaseModel {
   @column()
   declare payloadFilename: string | null
 
-  @column()
+  @column({
+    consume: (value: unknown) => {
+      if (value === null || value === undefined) return null
+      if (typeof value === 'number') return value
+      if (typeof value === 'bigint') return Number(value)
+      if (typeof value === 'string') {
+        const n = Number(value)
+        return Number.isFinite(n) ? n : null
+      }
+      return null
+    },
+  })
   declare payloadSizeBytes: number | null
 
   @column.dateTime({ autoCreate: true })

@@ -360,6 +360,18 @@ test.group('FileService — payload handling', (group) => {
     assert.isNull(result)
   })
 
+  test('getPayloadFilePath returns null when directory contains multiple files', async ({
+    assert,
+  }) => {
+    const dir = path.join(payloadsBase, '88')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'a.zip'), 'a')
+    await writeFile(path.join(dir, 'b.zip'), 'b')
+
+    const result = await svc.getPayloadFilePath(88)
+    assert.isNull(result)
+  })
+
   test('cleanupPayload removes payload directory', async ({ assert }) => {
     const dir = path.join(payloadsBase, '9')
     await mkdir(dir, { recursive: true })

@@ -406,7 +406,7 @@ export class FileService {
     }
 
     const files = entries.filter((e) => e.isFile())
-    if (files.length === 0) return null
+    if (files.length !== 1) return null
     return path.join(dir, files[0].name)
   }
 

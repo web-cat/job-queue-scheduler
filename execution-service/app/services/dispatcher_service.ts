@@ -252,18 +252,25 @@ export class DispatcherService {
     // grading itself succeeded, so we never fail the job on payload issues.
     const payload = await this.files.extractPayloadFile(jobId)
 
-    await this.lifecycle.markCompleted(
-      jobId,
-      {
-        ...results,
-        container_logs: truncate(logs, MAX_CONTAINER_LOGS_BYTES),
-        pod_name: podName,
-        payload_path: payload?.path ?? null,
-        payload_filename: payload?.filename ?? null,
-        payload_size_bytes: payload?.sizeBytes ?? null,
-      },
-      durationSeconds
-    )
+    try {
+      await this.lifecycle.markCompleted(
+        jobId,
+        {
+          ...results,
+          container_logs: truncate(logs, MAX_CONTAINER_LOGS_BYTES),
+          pod_name: podName,
+          payload_path: payload?.path ?? null,
+          payload_filename: payload?.filename ?? null,
+          payload_size_bytes: payload?.sizeBytes ?? null,
+        },
+        durationSeconds
+      )
+    } catch (err) {
+      if (payload) {
+        await this.files.cleanupPayload(jobId)
+      }
+      throw err
+    }
   }
 
   private async handleFailedRun(jobId: number, podName: string, exitCode: number): Promise<void> {

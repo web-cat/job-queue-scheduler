@@ -9,6 +9,7 @@ import Job from '#models/job'
 import SystemSetting from '#models/system_setting'
 import { FileService } from '#services/file_service'
 import { DispatcherService } from '#services/dispatcher_service'
+import defaultJobLifecycleService from '#services/job_lifecycle_service'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -550,6 +551,34 @@ test.group('DispatcherService — payload extraction', (group) => {
 
     // No payload directory created
     assert.isFalse(await dirExists(path.join(tmpPayloads, String(job.jobId))))
+  })
+
+  test('rolls back extracted payload when markCompleted fails', async ({ assert }) => {
+    const cfg = await makeImageConfig()
+    const job = await makePendingJob(cfg.id)
+
+    const { fake } = makeFakeK8sWithPayload({
+      writeResults: { correctness_score: 100, exit_code: 0 },
+      writePayload: { name: 'payload.zip', content: 'zip-bytes-here' },
+    })
+
+    const flakyLifecycle = {
+      ...defaultJobLifecycleService,
+      markCompleted: async () => {
+        throw new Error('simulated DB failure during markCompleted')
+      },
+    } as typeof defaultJobLifecycleService
+
+    const dispatcher = new DispatcherService(fake, flakyLifecycle, testFiles)
+    await dispatcher.runIteration()
+    await drainInflight(dispatcher)
+
+    // Payload directory must be cleaned up — no orphan left on disk
+    assert.isFalse(await dirExists(path.join(tmpPayloads, String(job.jobId))))
+
+    // No job_results row was inserted since markCompleted threw
+    const rows = await db.from('job_results').where('job_id', job.jobId)
+    assert.lengthOf(rows, 0)
   })
 
   test('payload is extracted before submission directory cleanup', async ({ assert }) => {

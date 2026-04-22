@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import type { HttpContext } from '@adonisjs/core/http'
 import { errors } from '@adonisjs/http-server'
+import Job from '#models/job'
 import JobResult from '#models/job_result'
 import jobLifecycleService from '#services/job_lifecycle_service'
 import { createJobValidator, listJobsValidator } from '#validators/job_validator'
@@ -84,15 +85,20 @@ export default class JobsController {
 
   async payload({ params, response }: HttpContext) {
     const jobId = Number(params.id)
-    const jobResult = await JobResult.findBy('job_id', jobId)
+    const job = await Job.find(jobId)
 
-    if (!jobResult) {
+    if (!job) {
       return response.notFound({
         error: { code: 'JOB_NOT_FOUND', message: `Job with ID ${params.id} not found` },
       })
     }
 
-    if (!jobResult.payloadPath) {
+    if (job.status !== 'completed') {
+      return response.accepted({ status: job.status })
+    }
+
+    const jobResult = await JobResult.findBy('job_id', jobId)
+    if (!jobResult || !jobResult.payloadPath) {
       return response.notFound({
         error: { code: 'NO_PAYLOAD', message: 'No payload file for this job' },
       })

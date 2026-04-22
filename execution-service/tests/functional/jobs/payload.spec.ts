@@ -99,12 +99,46 @@ test.group('GET /api/v1/jobs/:id/payload', (group) => {
     assert.equal(response.header('content-length'), String(payloadBytes.length))
   })
 
-  test('returns 404 JOB_NOT_FOUND when no JobResult exists for the id', async ({ client, assert }) => {
+  test('returns 404 JOB_NOT_FOUND when no Job row exists for the id', async ({ client, assert }) => {
     const response = await client.get('/api/v1/jobs/99999999/payload')
 
     response.assertStatus(404)
     const body = (await response.body()) as any
     assert.equal(body.error.code, 'JOB_NOT_FOUND')
+  })
+
+  test('returns 202 with status when job exists but is not completed', async ({ client, assert }) => {
+    const cfg = await ensureImageConfig()
+    const job = await Job.create({
+      submissionId: TEST_SUBMISSION_ID,
+      dockerImageTag: 'webcat/payload-test:example',
+      status: 'pending',
+      priority: 5,
+      sourcePath: path.join(tmpBase, 'source'),
+      resultDelivered: false,
+      estimatedRuntime: 15,
+      retryCount: 0,
+      submittedAt: DateTime.now(),
+      completedAt: null,
+      imageConfigId: cfg.id,
+    })
+
+    const response = await client.get(`/api/v1/jobs/${job.jobId}/payload`)
+
+    response.assertStatus(202)
+    const body = (await response.body()) as any
+    assert.equal(body.status, 'pending')
+  })
+
+  test('returns 404 NO_PAYLOAD when completed job has no JobResult row', async ({ client, assert }) => {
+    const cfg = await ensureImageConfig()
+    const job = await createCompletedJob(cfg.id, path.join(tmpBase, 'source'))
+
+    const response = await client.get(`/api/v1/jobs/${job.jobId}/payload`)
+
+    response.assertStatus(404)
+    const body = (await response.body()) as any
+    assert.equal(body.error.code, 'NO_PAYLOAD')
   })
 
   test('returns 404 NO_PAYLOAD when JobResult has no payload_path', async ({ client, assert }) => {
