@@ -55,6 +55,7 @@ export default defineConfig({
     () => import('#providers/api_provider'),
     () => import('#providers/callback_provider'),
     () => import('#providers/scheduler_provider'),
+    () => import('#providers/dispatcher_provider'),
   ],
 
   /*
