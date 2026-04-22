@@ -4,7 +4,7 @@ import JobResult from '#models/job_result'
 import CallbackLog from '#models/callback_log'
 import SystemSetting from '#models/system_setting'
 import logger from '@adonisjs/core/services/logger'
-import env from '#start/env'
+import { buildPayloadUrl } from '#services/job_lifecycle_service'
 import { DateTime } from 'luxon'
 
 const CALLBACK_TIMEOUT_MS = 10_000
@@ -94,7 +94,7 @@ class CallbackService {
       has_payload: hasPayload,
       payload_filename: jobResult.payloadFilename,
       payload_size_bytes: jobResult.payloadSizeBytes,
-      payload_url: hasPayload ? `${env.get('APP_URL')}/api/v1/jobs/${job.jobId}/payload` : null,
+      payload_url: hasPayload ? buildPayloadUrl(job.jobId) : null,
       completed_at: job.completedAt?.toISO() ?? null,
     }
 

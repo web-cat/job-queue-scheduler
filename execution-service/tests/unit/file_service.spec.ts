@@ -315,6 +315,39 @@ test.group('FileService — payload handling', (group) => {
     await assert.rejects(() => stat(path.join(payloadsBase, '4')))
   })
 
+  test('extractPayloadFile returns null when resulting dstPath exceeds 500 chars', async ({
+    assert,
+  }) => {
+    // Use a payloads base path long enough that {base}/{jobId}/{filename} exceeds
+    // 500 chars even with a "normal" filename. macOS filesystems reject single
+    // path components > 255 bytes so we use a long filename under the 255 limit
+    // and a long base directory to push the joined path over 500.
+    const longSegment = 'p'.repeat(200)
+    const longPayloadsBase = path.join(tmpdir(), `file-svc-long-${Date.now()}`, longSegment, longSegment)
+    await mkdir(longPayloadsBase, { recursive: true })
+
+    const longSvc = new FileService({
+      submissionsPath: subsBase,
+      payloadsPath: longPayloadsBase,
+      maxPayloadBytes: 1024 * 1024,
+    })
+
+    const out = path.join(subsBase, '44', 'output')
+    await mkdir(out, { recursive: true })
+    const filename = 'a'.repeat(200) + '.zip' // under 255 but contributes to long dstPath
+    await writeFile(path.join(out, filename), 'payload')
+
+    const result = await longSvc.extractPayloadFile(44)
+    assert.isNull(result)
+
+    // Source file remains; destination was never created
+    const srcStat = await stat(path.join(out, filename))
+    assert.equal(srcStat.size, 'payload'.length)
+    await assert.rejects(() => stat(path.join(longPayloadsBase, '44')))
+
+    await rm(longPayloadsBase, { recursive: true, force: true })
+  })
+
   test('extractPayloadFile ignores subdirectories in output dir', async ({ assert }) => {
     const out = path.join(subsBase, '5', 'output')
     await mkdir(out, { recursive: true })

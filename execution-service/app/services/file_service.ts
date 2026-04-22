@@ -79,6 +79,9 @@ const DEFAULT_SUBMISSIONS_PATH = '/data/submissions'
 const DEFAULT_PAYLOADS_PATH = '/data/payloads'
 const DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 const DEFAULT_MAX_PAYLOAD_BYTES = 100 * 1024 * 1024
+// Match the varchar sizes on job_results.payload_filename / payload_path.
+const MAX_PAYLOAD_FILENAME_LENGTH = 255
+const MAX_PAYLOAD_PATH_LENGTH = 500
 const RESULTS_JSON_NAME = 'results.json'
 const MAX_RESULTS_FILE_BYTES = 1024 * 1024
 const TRUNCATE_FIELD_CHARS = 500_000
@@ -354,6 +357,34 @@ export class FileService {
     const srcPath = path.join(outputPath, chosen.name)
     const dstDir = this.getPayloadDirectory(jobId)
     const dstPath = path.join(dstDir, chosen.name)
+
+    // Enforce the DB column limits here so a pathological filename from a grading
+    // container doesn't cause markCompleted to fail on insert. Grading already
+    // succeeded — we'd rather skip storing the payload than fail the whole job.
+    if (chosen.name.length > MAX_PAYLOAD_FILENAME_LENGTH) {
+      logger.warn(
+        {
+          jobId,
+          filename: chosen.name,
+          filenameLength: chosen.name.length,
+          maxFilenameLength: MAX_PAYLOAD_FILENAME_LENGTH,
+        },
+        'Payload filename exceeds persistence limit — skipping payload extraction'
+      )
+      return null
+    }
+    if (dstPath.length > MAX_PAYLOAD_PATH_LENGTH) {
+      logger.warn(
+        {
+          jobId,
+          filename: chosen.name,
+          pathLength: dstPath.length,
+          maxPathLength: MAX_PAYLOAD_PATH_LENGTH,
+        },
+        'Payload path exceeds persistence limit — skipping payload extraction'
+      )
+      return null
+    }
 
     try {
       await mkdir(dstDir, { recursive: true, mode: 0o755 })

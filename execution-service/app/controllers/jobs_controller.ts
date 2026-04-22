@@ -1,9 +1,12 @@
+import path from 'node:path'
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import type { HttpContext } from '@adonisjs/core/http'
 import { errors } from '@adonisjs/http-server'
+import logger from '@adonisjs/core/services/logger'
 import Job from '#models/job'
 import JobResult from '#models/job_result'
+import fileService from '#services/file_service'
 import jobLifecycleService from '#services/job_lifecycle_service'
 import { createJobValidator, listJobsValidator } from '#validators/job_validator'
 
@@ -104,8 +107,31 @@ export default class JobsController {
       })
     }
 
+    // Defense-in-depth: resolve both the stored path and the expected payload directory
+    // and require the stored path to live inside it. Guards against DB tampering or
+    // unexpected writes producing an arbitrary file read via this endpoint.
+    const expectedDir = path.resolve(fileService.getPayloadDirectory(jobId))
+    const resolvedPath = path.resolve(jobResult.payloadPath)
+    const withinDir =
+      resolvedPath === expectedDir ||
+      resolvedPath.startsWith(expectedDir + path.sep)
+    if (!withinDir) {
+      logger.error(
+        { jobId, payloadPath: jobResult.payloadPath, expectedDir },
+        'Payload path is outside expected directory — refusing to serve'
+      )
+      return response.notFound({
+        error: { code: 'NO_PAYLOAD', message: 'No payload file for this job' },
+      })
+    }
+
+    // Use fs.stat to discover size at request time rather than trusting the DB.
+    // Also narrows the TOCTOU window — the stream below attaches an error handler
+    // so concurrent cleanup still surfaces as PAYLOAD_DELETED if ENOENT slips in.
+    let currentSize: number
     try {
-      await stat(jobResult.payloadPath)
+      const st = await stat(resolvedPath)
+      currentSize = st.size
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
         return response.notFound({
@@ -119,10 +145,17 @@ export default class JobsController {
     const safeFilename = filename.replace(/["\r\n]/g, '')
     response.header('Content-Type', 'application/octet-stream')
     response.header('Content-Disposition', `attachment; filename="${safeFilename}"`)
-    if (jobResult.payloadSizeBytes !== null) {
-      response.header('Content-Length', String(jobResult.payloadSizeBytes))
-    }
-    return response.stream(createReadStream(jobResult.payloadPath))
+    response.header('Content-Length', String(currentSize))
+
+    const stream = createReadStream(resolvedPath)
+    stream.on('error', (err: any) => {
+      if (err?.code === 'ENOENT') {
+        logger.warn({ jobId, payloadPath: resolvedPath }, 'Payload vanished mid-stream')
+      } else {
+        logger.error({ jobId, err }, 'Error while streaming payload')
+      }
+    })
+    return response.stream(stream)
   }
 
   async destroy({ params, response }: HttpContext) {

@@ -33,13 +33,17 @@ type JobResultPayloadFields = Pick<
   'payloadPath' | 'payloadFilename' | 'payloadSizeBytes'
 >
 
+export function buildPayloadUrl(jobId: number): string {
+  return new URL(`/api/v1/jobs/${jobId}/payload`, env.get('APP_URL')).toString()
+}
+
 function buildPayloadMetadata(jobId: number, jobResult: JobResultPayloadFields) {
   const hasPayload = jobResult.payloadPath !== null && jobResult.payloadPath !== undefined
   return {
     has_payload: hasPayload,
     payload_filename: jobResult.payloadFilename,
     payload_size_bytes: jobResult.payloadSizeBytes,
-    payload_url: hasPayload ? `${env.get('APP_URL')}/api/v1/jobs/${jobId}/payload` : null,
+    payload_url: hasPayload ? buildPayloadUrl(jobId) : null,
   }
 }
 

@@ -522,6 +522,11 @@ test.group('CallbackService — payload metadata in webhook body', (group) => {
     assert.equal(Number(body.payload_size_bytes), 4096)
     assert.isString(body.payload_url)
     assert.include(String(body.payload_url), `/api/v1/jobs/${job.jobId}/payload`)
+
+    // Must not contain a double slash between host and path, regardless of
+    // whether APP_URL ends in a trailing slash.
+    const pathPart = String(body.payload_url).replace(/^https?:\/\/[^/]+/, '')
+    assert.notMatch(pathPart, /^\/\//)
   })
 
   test('includes has_payload=false and null payload_url when no payload was stored', async ({

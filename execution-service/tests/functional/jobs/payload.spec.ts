@@ -45,6 +45,7 @@ async function createCompletedJob(imageConfigId: number, sourcePath: string) {
 
 test.group('GET /api/v1/jobs/:id/payload', (group) => {
   let tmpBase: string
+  let originalPayloadsEnv: string | undefined
 
   group.setup(async () => {
     await ensureImageConfig()
@@ -54,11 +55,16 @@ test.group('GET /api/v1/jobs/:id/payload', (group) => {
     tmpBase = path.join(tmpdir(), `payload-func-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     await mkdir(tmpBase, { recursive: true })
 
+    originalPayloadsEnv = process.env.PAYLOADS_PATH
+    process.env.PAYLOADS_PATH = tmpBase
+
     await db.from('jobs').where('submission_id', TEST_SUBMISSION_ID).delete()
   })
 
   group.each.teardown(async () => {
     await rm(tmpBase, { recursive: true, force: true })
+    if (originalPayloadsEnv === undefined) delete process.env.PAYLOADS_PATH
+    else process.env.PAYLOADS_PATH = originalPayloadsEnv
     await db.from('jobs').where('submission_id', TEST_SUBMISSION_ID).delete()
   })
 
@@ -175,7 +181,10 @@ test.group('GET /api/v1/jobs/:id/payload', (group) => {
     const cfg = await ensureImageConfig()
     const job = await createCompletedJob(cfg.id, path.join(tmpBase, 'source'))
 
-    const missingPath = path.join(tmpBase, 'ghost', 'payload.zip')
+    // Path is inside the expected payload directory for this jobId (passes the
+    // traversal check) but points at a file that was never created (or was
+    // cleaned up after the DB row was written).
+    const missingPath = path.join(tmpBase, String(job.jobId), 'payload.zip')
 
     await JobResult.create({
       jobId: job.jobId,
@@ -201,6 +210,75 @@ test.group('GET /api/v1/jobs/:id/payload', (group) => {
     response.assertStatus(404)
     const body = (await response.body()) as any
     assert.equal(body.error.code, 'PAYLOAD_DELETED')
+  })
+
+  test('returns 404 NO_PAYLOAD when payload_path points outside expected directory', async ({ client, assert }) => {
+    const cfg = await ensureImageConfig()
+    const job = await createCompletedJob(cfg.id, path.join(tmpBase, 'source'))
+
+    // Attempt to serve a file outside the payloads directory. Even though the
+    // file exists on disk and the DB references it, the controller must refuse.
+    const outsidePath = path.join(tmpBase, 'somewhere-else', 'secret.txt')
+    await mkdir(path.dirname(outsidePath), { recursive: true })
+    await writeFile(outsidePath, 'should-not-be-served')
+
+    await JobResult.create({
+      jobId: job.jobId,
+      correctnessScore: 100,
+      toolScore: null,
+      comments: null,
+      commentFormat: null,
+      testOutput: null,
+      containerLogs: null,
+      exitCode: 0,
+      cpuUsage: null,
+      ramUsage: null,
+      runtimeMs: 1000,
+      podName: 'test-pod',
+      nodeIp: null,
+      payloadPath: outsidePath,
+      payloadFilename: 'secret.txt',
+      payloadSizeBytes: 20,
+    })
+
+    const response = await client.get(`/api/v1/jobs/${job.jobId}/payload`)
+
+    response.assertStatus(404)
+    const body = (await response.body()) as any
+    assert.equal(body.error.code, 'NO_PAYLOAD')
+  })
+
+  test('returns 404 NO_PAYLOAD when payload_path uses .. path traversal', async ({ client, assert }) => {
+    const cfg = await ensureImageConfig()
+    const job = await createCompletedJob(cfg.id, path.join(tmpBase, 'source'))
+
+    // Traversal attempt: resolves outside getPayloadDirectory(jobId).
+    const traversalPath = path.join(tmpBase, String(job.jobId), '..', 'etc', 'passwd')
+
+    await JobResult.create({
+      jobId: job.jobId,
+      correctnessScore: 100,
+      toolScore: null,
+      comments: null,
+      commentFormat: null,
+      testOutput: null,
+      containerLogs: null,
+      exitCode: 0,
+      cpuUsage: null,
+      ramUsage: null,
+      runtimeMs: 1000,
+      podName: 'test-pod',
+      nodeIp: null,
+      payloadPath: traversalPath,
+      payloadFilename: 'passwd',
+      payloadSizeBytes: 0,
+    })
+
+    const response = await client.get(`/api/v1/jobs/${job.jobId}/payload`)
+
+    response.assertStatus(404)
+    const body = (await response.body()) as any
+    assert.equal(body.error.code, 'NO_PAYLOAD')
   })
 
   test('sanitizes filename to strip CR/LF/quote characters in Content-Disposition', async ({ client, assert }) => {
