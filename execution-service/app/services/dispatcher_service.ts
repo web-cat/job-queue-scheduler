@@ -150,7 +150,7 @@ export class DispatcherService {
     const maxConcurrent = await this.getMaxConcurrentJobs()
     const activeCount = await this.k8s.getActiveJobCount()
 
-    if (activeCount >= maxConcurrent) {
+    if (activeCount + this.inflight.size >= maxConcurrent) {
       return 'at_capacity'
     }
 
