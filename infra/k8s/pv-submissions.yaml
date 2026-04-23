@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: webcat-submissions-pv
+spec:
+  capacity:
+    storage: 50Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: webcat-submissions
+  hostPath:
+    path: /data/webcat/submissions
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: webcat-submissions-pvc
+  namespace: webcat
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: webcat-submissions
+  resources:
+    requests:
+      storage: 50Gi
+  volumeName: webcat-submissions-pv

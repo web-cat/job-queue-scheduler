@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webcat-api
+  namespace: webcat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webcat-api
+  template:
+    metadata:
+      labels:
+        app: webcat-api
+    spec:
+      containers:
+        - name: api
+          image: webcat/execution-service:latest
+          ports:
+            - containerPort: 3333
+          envFrom:
+            - configMapRef:
+                name: webcat-config
+            - secretRef:
+                name: webcat-secrets
+          env:
+            - name: ENABLE_DISPATCHER
+              value: "false"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1000m"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3333
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3333
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: submissions
+              mountPath: /data/submissions
+      volumes:
+        - name: submissions
+          persistentVolumeClaim:
+            claimName: webcat-submissions-pvc

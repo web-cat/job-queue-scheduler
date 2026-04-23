@@ -1,7 +1,7 @@
 # Task 16: Kubernetes Manifests & Deployment Config
 
-**Status:** Not Started
-**Assignee:** (pick up)
+**Status:** Completed
+**Assignee:** Sy
 **Priority:** LOW — do this last, after everything works locally
 **Dependencies:** All other tasks (this deploys what they build)
 

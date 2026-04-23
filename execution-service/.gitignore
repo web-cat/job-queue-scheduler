@@ -26,3 +26,5 @@ yarn-error.log
 
 # Platform specific
 .DS_Store
+
+infra/k8s/secret.yaml
