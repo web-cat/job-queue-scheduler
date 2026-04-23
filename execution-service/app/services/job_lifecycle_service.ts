@@ -216,6 +216,7 @@ class JobLifecycleService {
       started_at: job.startedAt,
       completed_at: job.completedAt,
       retry_count: job.retryCount,
+      error_message: job.errorMessage,
       queue_position: null,
       estimated_wait_seconds: null,
       result: null,

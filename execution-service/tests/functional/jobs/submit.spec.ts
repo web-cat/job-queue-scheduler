@@ -130,4 +130,56 @@ test.group('Job submission endpoint', (group) => {
 
     response.assertStatus(400)
   })
+
+  test('stores callback_url on the job when provided', async ({ client, assert }) => {
+    const fixturePath = path.join(process.cwd(), 'tests', 'fixtures', 'submission.txt')
+    const callbackUrl = 'https://example.com/webhook/submit-test'
+
+    const response = await client
+      .post('/api/v1/jobs')
+      .field('docker_image_tag', 'webcat/java-grader:example')
+      .field('submission_id', 900005)
+      .field('callback_url', callbackUrl)
+      .file('files', fixturePath)
+
+    response.assertStatus(201)
+    const body = (await response.body()) as any
+
+    const row = await db
+      .from('jobs')
+      .where('job_id', body.data.job_id)
+      .select('callback_url', 'result_delivered')
+      .first()
+
+    assert.exists(row)
+    assert.equal(row!.callback_url, callbackUrl)
+    assert.isFalse(row!.result_delivered)
+  })
+
+  test('stores optional user_id, course_id, and assignment_name', async ({ client, assert }) => {
+    const fixturePath = path.join(process.cwd(), 'tests', 'fixtures', 'submission.txt')
+
+    const response = await client
+      .post('/api/v1/jobs')
+      .field('docker_image_tag', 'webcat/java-grader:example')
+      .field('submission_id', 900006)
+      .field('user_id', 1234)
+      .field('course_id', 57)
+      .field('assignment_name', 'Metadata Assertion Test')
+      .file('files', fixturePath)
+
+    response.assertStatus(201)
+    const body = (await response.body()) as any
+
+    const row = await db
+      .from('jobs')
+      .where('job_id', body.data.job_id)
+      .select('user_id', 'course_id', 'assignment_name')
+      .first()
+
+    assert.exists(row)
+    assert.equal(Number(row!.user_id), 1234)
+    assert.equal(Number(row!.course_id), 57)
+    assert.equal(row!.assignment_name, 'Metadata Assertion Test')
+  })
 })

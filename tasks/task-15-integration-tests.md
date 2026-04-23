@@ -1,7 +1,7 @@
 # Task 15: Integration Tests
 
-**Status:** Not Started
-**Assignee:** (pick up)
+**Status:** Complete
+**Assignee:** Raaghav
 **Priority:** MEDIUM — should be done after core features are built
 **Dependencies:** Tasks 3-14 (tests the features those tasks build)
 
@@ -95,10 +95,17 @@ Create helper functions:
 
 ## Acceptance Criteria
 
-- [ ] All test suites pass
-- [ ] Tests run against a real Postgres database
-- [ ] Tests are independent (no test depends on another test's side effects)
-- [ ] Tests clean up after themselves
-- [ ] HRRN ordering is verified with concrete examples
-- [ ] Concurrent dequeue is tested for race conditions
-- [ ] Edge cases (missing data, invalid states) are covered
+- [x] All test suites pass (205 tests: 57 unit + 148 functional)
+- [x] Tests run against a real Postgres database (docker-compose postgres:16)
+- [x] Tests are independent (each group resets via `cleanDatabase()` / tag-scoped `.each.setup`)
+- [x] Tests clean up after themselves (dir cleanup in e2e + lifecycle, DB rows in every group)
+- [x] HRRN ordering is verified with concrete examples (5-job ordered dequeue in `tests/functional/scheduler/hrrn.spec.ts`)
+- [x] Concurrent dequeue is tested for race conditions (5 workers / 5 jobs + overflow cases)
+- [x] Edge cases (missing data, invalid states) are covered (404/409/422 across submit/status/queue; markFailed no-op on completed; no-callback-url path)
+
+## Deliverables
+
+- `tests/helpers/test_utils.ts` — `createTestJob`, `createTestImageConfig`, `seedTestData`, `cleanDatabase` (tag-namespaced so suites don't collide)
+- `tests/functional/scheduler/hrrn.spec.ts` — HRRN ordering + concurrent dequeue
+- `tests/functional/lifecycle/lifecycle.spec.ts` — full submit→dequeue→complete, rolling avg, retry semantics, getJob shape
+- `tests/functional/callback/callback.spec.ts` — markCompleted triggers POST, failure logging, retry cap
