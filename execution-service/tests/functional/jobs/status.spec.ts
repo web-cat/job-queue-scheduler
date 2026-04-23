@@ -129,6 +129,34 @@ test.group('GET /api/v1/jobs/:id — job show', (group) => {
     assert.isNull(body.estimated_wait_seconds)
     assert.isNull(body.result)
   })
+
+  test('returns error_message on the failed job response', async ({ client, assert }) => {
+    const cfg = await makeImageConfig()
+    const job = await makeJob(cfg.id, {
+      status: 'failed',
+      errorMessage: 'Container exited with code 137 (OOMKilled)',
+      completedAt: DateTime.now(),
+    })
+
+    const res = await client.get(`/api/v1/jobs/${job.jobId}`)
+    res.assertStatus(200)
+    const body = res.body() as any
+
+    assert.equal(body.status, 'failed')
+    assert.equal(body.error_message, 'Container exited with code 137 (OOMKilled)')
+  })
+
+  test('error_message is null for non-failed jobs', async ({ client, assert }) => {
+    const cfg = await makeImageConfig()
+    const job = await makeJob(cfg.id, { status: 'pending' })
+
+    const res = await client.get(`/api/v1/jobs/${job.jobId}`)
+    res.assertStatus(200)
+    const body = res.body() as any
+
+    assert.equal(body.status, 'pending')
+    assert.isNull(body.error_message)
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -196,3 +196,152 @@ test.group('CleanupService — cleanupOrphanedFiles', (group) => {
     await assert.doesNotRejects(() => cleanupService.cleanupOrphanedFiles(nonExistent))
   })
 })
+
+test.group('CleanupService — payload cleanup (Task 17)', (group) => {
+  let tmpSubs: string
+  let tmpPayloads: string
+  let originalSubsEnv: string | undefined
+  let originalPayloadsEnv: string | undefined
+
+  group.each.setup(async () => {
+    await db.from('job_results').delete()
+    await db.from('jobs').delete()
+    await db.from('image_configs').delete()
+
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    tmpSubs = path.join(tmpdir(), `cleanup-subs-${suffix}`)
+    tmpPayloads = path.join(tmpdir(), `cleanup-payloads-${suffix}`)
+    await mkdir(tmpSubs, { recursive: true })
+    await mkdir(tmpPayloads, { recursive: true })
+
+    originalSubsEnv = process.env.SUBMISSIONS_PATH
+    originalPayloadsEnv = process.env.PAYLOADS_PATH
+    process.env.SUBMISSIONS_PATH = tmpSubs
+    process.env.PAYLOADS_PATH = tmpPayloads
+  })
+
+  group.each.teardown(async () => {
+    await rm(tmpSubs, { recursive: true, force: true })
+    await rm(tmpPayloads, { recursive: true, force: true })
+    if (originalSubsEnv === undefined) delete process.env.SUBMISSIONS_PATH
+    else process.env.SUBMISSIONS_PATH = originalSubsEnv
+    if (originalPayloadsEnv === undefined) delete process.env.PAYLOADS_PATH
+    else process.env.PAYLOADS_PATH = originalPayloadsEnv
+  })
+
+  test('cleanupOldJobs removes payload directory for old completed job', async ({ assert }) => {
+    const cfg = await createImageConfig()
+    const oldJob = await createJob(cfg.id, {
+      status: 'completed',
+      completedAt: DateTime.now().minus({ days: 31 }),
+    })
+
+    const payloadDir = path.join(tmpPayloads, String(oldJob.jobId))
+    await mkdir(payloadDir, { recursive: true })
+    const payloadFile = path.join(payloadDir, 'payload.zip')
+    const { writeFile } = await import('node:fs/promises')
+    await writeFile(payloadFile, 'old payload bytes')
+
+    await cleanupService.cleanupOldJobs(30)
+
+    assert.isFalse(await dirExists(payloadDir))
+  })
+
+  test('cleanupOldJobs keeps payload directory for recent completed job', async ({ assert }) => {
+    const cfg = await createImageConfig()
+    const recentJob = await createJob(cfg.id, {
+      status: 'completed',
+      completedAt: DateTime.now().minus({ days: 5 }),
+    })
+
+    const payloadDir = path.join(tmpPayloads, String(recentJob.jobId))
+    await mkdir(payloadDir, { recursive: true })
+    const { writeFile } = await import('node:fs/promises')
+    await writeFile(path.join(payloadDir, 'payload.zip'), 'recent payload')
+
+    await cleanupService.cleanupOldJobs(30)
+
+    assert.isTrue(await dirExists(payloadDir))
+  })
+
+  test('cleanupOldJobs does not fail when payload directory is absent', async ({ assert }) => {
+    const cfg = await createImageConfig()
+    await createJob(cfg.id, {
+      status: 'completed',
+      completedAt: DateTime.now().minus({ days: 31 }),
+    })
+    // Intentionally no payload directory created
+
+    await assert.doesNotRejects(() => cleanupService.cleanupOldJobs(30))
+  })
+
+  test('cleanupOrphanedPayloads removes payload dir for job that no longer exists', async ({
+    assert,
+  }) => {
+    const orphanDir = path.join(tmpPayloads, '9999')
+    await mkdir(orphanDir, { recursive: true })
+
+    await cleanupService.cleanupOrphanedPayloads(tmpPayloads)
+
+    assert.isFalse(await dirExists(orphanDir))
+  })
+
+  test('cleanupOrphanedPayloads keeps payload dir when job still exists in DB', async ({
+    assert,
+  }) => {
+    const cfg = await createImageConfig()
+    const job = await createJob(cfg.id, { status: 'completed' })
+
+    const payloadDir = path.join(tmpPayloads, String(job.jobId))
+    await mkdir(payloadDir, { recursive: true })
+
+    await cleanupService.cleanupOrphanedPayloads(tmpPayloads)
+
+    assert.isTrue(await dirExists(payloadDir))
+  })
+
+  test('cleanupOrphanedPayloads skips non-numeric directory names', async ({ assert }) => {
+    const nonNumericDir = path.join(tmpPayloads, 'lost+found')
+    await mkdir(nonNumericDir, { recursive: true })
+
+    await cleanupService.cleanupOrphanedPayloads(tmpPayloads)
+
+    assert.isTrue(await dirExists(nonNumericDir))
+  })
+
+  test('cleanupOrphanedPayloads handles missing payloads directory gracefully', async ({
+    assert,
+  }) => {
+    const nonExistent = path.join(tmpdir(), `payloads-missing-${Date.now()}`)
+    await assert.doesNotRejects(() => cleanupService.cleanupOrphanedPayloads(nonExistent))
+  })
+
+  test('cleanupOrphanedPayloads honors the passed basePath (not the singleton root)', async ({
+    assert,
+  }) => {
+    // Point the env/singleton at a separate directory so a basePath-ignoring
+    // implementation would target the wrong root and leave the orphan behind.
+    const altRoot = path.join(tmpdir(), `cleanup-alt-root-${Date.now()}`)
+    await mkdir(altRoot, { recursive: true })
+    const prev = process.env.PAYLOADS_PATH
+    process.env.PAYLOADS_PATH = altRoot
+
+    try {
+      const orphanDir = path.join(tmpPayloads, '12345')
+      await mkdir(orphanDir, { recursive: true })
+
+      // A same-named dir under the singleton root must NOT be touched.
+      const altSameIdDir = path.join(altRoot, '12345')
+      await mkdir(altSameIdDir, { recursive: true })
+
+      await cleanupService.cleanupOrphanedPayloads(tmpPayloads)
+
+      assert.isFalse(await dirExists(orphanDir))
+      assert.isTrue(await dirExists(altSameIdDir))
+    } finally {
+      if (prev === undefined) delete process.env.PAYLOADS_PATH
+      else process.env.PAYLOADS_PATH = prev
+      await rm(altRoot, { recursive: true, force: true })
+    }
+  })
+})

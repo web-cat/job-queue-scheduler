@@ -87,7 +87,7 @@ export class ImageConfigSchema extends BaseModel {
 }
 
 export class JobResultSchema extends BaseModel {
-  static $columns = ['commentFormat', 'comments', 'containerLogs', 'correctnessScore', 'cpuUsage', 'createdAt', 'exitCode', 'id', 'jobId', 'nodeIp', 'podName', 'ramUsage', 'runtimeMs', 'testOutput', 'toolScore'] as const
+  static $columns = ['commentFormat', 'comments', 'containerLogs', 'correctnessScore', 'cpuUsage', 'createdAt', 'exitCode', 'id', 'jobId', 'nodeIp', 'payloadFilename', 'payloadPath', 'payloadSizeBytes', 'podName', 'ramUsage', 'runtimeMs', 'testOutput', 'toolScore'] as const
   $columns = JobResultSchema.$columns
   @column()
   declare commentFormat: number | null
@@ -109,6 +109,12 @@ export class JobResultSchema extends BaseModel {
   declare jobId: bigint | number
   @column()
   declare nodeIp: string | null
+  @column()
+  declare payloadFilename: string | null
+  @column()
+  declare payloadPath: string | null
+  @column()
+  declare payloadSizeBytes: bigint | number | null
   @column()
   declare podName: string | null
   @column()
