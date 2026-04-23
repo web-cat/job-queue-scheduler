@@ -7,6 +7,90 @@ import type { InferInput, SimpleError } from '@vinejs/vine/types'
 export type ParamValue = string | number | bigint | boolean
 
 export interface Registry {
+  'images.index': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/images'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/images_controller').default['index']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/images_controller').default['index']>>>
+    }
+  }
+  'images.store': {
+    methods: ["POST"]
+    pattern: '/api/v1/images'
+    types: {
+      body: ExtractBody<InferInput<(typeof import('#validators/image_config_validator').createImageConfigValidator)>>
+      paramsTuple: []
+      params: {}
+      query: ExtractQuery<InferInput<(typeof import('#validators/image_config_validator').createImageConfigValidator)>>
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/images_controller').default['store']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/images_controller').default['store']>>> | { status: 422; response: { errors: SimpleError[] } }
+    }
+  }
+  'images.stats': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/images/:id/stats'
+    types: {
+      body: {}
+      paramsTuple: [ParamValue]
+      params: { id: ParamValue }
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/images_controller').default['stats']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/images_controller').default['stats']>>>
+    }
+  }
+  'images.show': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/images/:id'
+    types: {
+      body: {}
+      paramsTuple: [ParamValue]
+      params: { id: ParamValue }
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/images_controller').default['show']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/images_controller').default['show']>>>
+    }
+  }
+  'images.update': {
+    methods: ["PUT"]
+    pattern: '/api/v1/images/:id'
+    types: {
+      body: ExtractBody<InferInput<(typeof import('#validators/image_config_validator').updateImageConfigValidator)>>
+      paramsTuple: [ParamValue]
+      params: { id: ParamValue }
+      query: ExtractQuery<InferInput<(typeof import('#validators/image_config_validator').updateImageConfigValidator)>>
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/images_controller').default['update']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/images_controller').default['update']>>> | { status: 422; response: { errors: SimpleError[] } }
+    }
+  }
+  'images.destroy': {
+    methods: ["DELETE"]
+    pattern: '/api/v1/images/:id'
+    types: {
+      body: {}
+      paramsTuple: [ParamValue]
+      params: { id: ParamValue }
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/images_controller').default['destroy']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/images_controller').default['destroy']>>>
+    }
+  }
+  'jobs.store': {
+    methods: ["POST"]
+    pattern: '/api/v1/jobs'
+    types: {
+      body: ExtractBody<InferInput<(typeof import('#validators/job_validator').createJobValidator)>>
+      paramsTuple: []
+      params: {}
+      query: ExtractQuery<InferInput<(typeof import('#validators/job_validator').createJobValidator)>>
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/jobs_controller').default['store']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/jobs_controller').default['store']>>> | { status: 422; response: { errors: SimpleError[] } }
+    }
+  }
   'jobs.index': {
     methods: ["GET","HEAD"]
     pattern: '/api/v1/jobs'
@@ -41,6 +125,18 @@ export interface Registry {
       query: {}
       response: ExtractResponse<Awaited<ReturnType<import('#controllers/jobs_controller').default['results']>>>
       errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/jobs_controller').default['results']>>>
+    }
+  }
+  'jobs.payload': {
+    methods: ["GET","HEAD"]
+    pattern: '/api/v1/jobs/:id/payload'
+    types: {
+      body: {}
+      paramsTuple: [ParamValue]
+      params: { id: ParamValue }
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/jobs_controller').default['payload']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/jobs_controller').default['payload']>>>
     }
   }
   'jobs.destroy': {

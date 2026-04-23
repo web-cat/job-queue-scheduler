@@ -17,6 +17,14 @@ const DEFAULT_SHUTDOWN_TIMEOUT_MS = 60_000
 const MAX_CONTAINER_LOGS_BYTES = 10 * 1024
 const MAX_FAILURE_LOG_BYTES = 2 * 1024
 
+/**
+ * In some non-HTTP entrypoints (e.g. Ace commands used as a sidecar),
+ * the Adonis logger service can be unavailable during early boot or if
+ * something goes wrong while booting providers. Never crash the dispatcher
+ * just because structured logging isn't available.
+ */
+const log: Pick<Console, 'info' | 'warn' | 'error'> = (logger as any) ?? console
+
 type K8sLike = typeof defaultK8sService
 type JobLifecycleLike = typeof defaultJobLifecycleService
 
@@ -72,16 +80,16 @@ export class DispatcherService {
    */
   async start(): Promise<void> {
     if (this.running) {
-      logger.warn('Dispatcher start() called while already running — ignoring')
+      log.warn('Dispatcher start() called while already running — ignoring')
       return
     }
 
     const maxConcurrent = await this.getMaxConcurrentJobs()
-    logger.info({ workerId: this.workerId, maxConcurrent }, 'Dispatcher started')
+    log.info({ workerId: this.workerId, maxConcurrent }, 'Dispatcher started')
 
     this.running = true
     this.loopPromise = this.runLoop().catch((err) => {
-      logger.error({ err }, 'Dispatcher loop terminated with error')
+      log.error({ err }, 'Dispatcher loop terminated with error')
     })
   }
 
@@ -104,7 +112,7 @@ export class DispatcherService {
     }
 
     if (this.inflight.size > 0) {
-      logger.warn(
+      log.warn(
         { abandoned: this.inflight.size },
         'Dispatcher shutdown timed out with jobs still in-flight'
       )
@@ -115,7 +123,7 @@ export class DispatcherService {
       this.loopPromise = null
     }
 
-    logger.info('Dispatcher stopped')
+    log.info('Dispatcher stopped')
   }
 
   /**
@@ -127,7 +135,7 @@ export class DispatcherService {
       try {
         outcome = await this.runIteration()
       } catch (err) {
-        logger.error({ err }, 'Unhandled error in dispatcher iteration')
+        log.error({ err }, 'Unhandled error in dispatcher iteration')
         outcome = 'error'
       }
 
@@ -159,7 +167,7 @@ export class DispatcherService {
 
     // Fire-and-track: don't block the loop on a single job.
     const promise = this.runJob(job).catch((err) => {
-      logger.error({ jobId: job.jobId, err }, 'Error processing job (outer)')
+      log.error({ jobId: job.jobId, err }, 'Error processing job (outer)')
     })
     this.inflight.add(promise)
     promise.finally(() => this.inflight.delete(promise))
@@ -207,19 +215,21 @@ export class DispatcherService {
         await this.handleFailedRun(jobId, podName, completion.exitCode)
       }
     } catch (err) {
-      logger.error({ jobId, err }, 'Dispatcher caught error while processing job')
+      log.error({ jobId, err }, 'Dispatcher caught error while processing job')
       await this.lifecycle
         .markFailed(jobId, `Dispatcher error: ${(err as Error)?.message ?? err}`)
-        .catch((inner) => logger.error({ jobId, err: inner }, 'Failed to mark job failed after dispatcher error'))
+        .catch((inner) =>
+          log.error({ jobId, err: inner }, 'Failed to mark job failed after dispatcher error')
+        )
     } finally {
       if (podCreated) {
         await this.k8s
           .deleteJob(jobName)
-          .catch((err) => logger.warn({ jobId, jobName, err }, 'Failed to delete K8s Job during cleanup'))
+          .catch((err) => log.warn({ jobId, jobName, err }, 'Failed to delete K8s Job during cleanup'))
       }
       await this.files
         .cleanupSubmission(jobId)
-        .catch((err) => logger.warn({ jobId, err }, 'Failed to clean up submission directory'))
+        .catch((err) => log.warn({ jobId, err }, 'Failed to clean up submission directory'))
     }
   }
 
@@ -238,7 +248,7 @@ export class DispatcherService {
     } catch (err) {
       if (err instanceof FileServiceError) {
         const msg = markFailedMessageForGradingResultsError(err)
-        logger.warn({ jobId, code: err.code }, `Grading pod succeeded but results unreadable — ${msg}`)
+        log.warn({ jobId, code: err.code }, `Grading pod succeeded but results unreadable — ${msg}`)
         await this.lifecycle.markFailed(jobId, msg)
         return
       }
@@ -290,7 +300,7 @@ export class DispatcherService {
         if (Number.isFinite(parsed) && parsed > 0) return parsed
       }
     } catch (err) {
-      logger.warn({ err }, 'Failed to read max_concurrent_jobs — using default')
+      log.warn({ err }, 'Failed to read max_concurrent_jobs — using default')
     }
     return DEFAULT_MAX_CONCURRENT
   }

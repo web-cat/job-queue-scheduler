@@ -7,6 +7,7 @@ import ImageConfig from '#models/image_config'
 import Job from '#models/job'
 import JobResult from '#models/job_result'
 import { DispatcherService } from '#services/dispatcher_service'
+import type { CreateGradingJobParams } from '#services/k8s_service'
 
 /**
  * End-to-end coverage for the full grading pipeline:
@@ -52,10 +53,13 @@ function makeFakeK8s(opts: FakeOpts = {}) {
   return {
     calls,
     fake: {
+      initialize() {
+        // no-op: fake service needs to satisfy the dispatcher K8s interface
+      },
       getJobName(jobId: number) {
         return `grading-job-${jobId}`
       },
-      async createGradingJob(params: { jobId: number; outputPath: string; [k: string]: unknown }) {
+      async createGradingJob(params: CreateGradingJobParams) {
         calls.created++
         lastOutputPath = params.outputPath
         return `grading-job-${params.jobId}`

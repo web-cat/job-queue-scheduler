@@ -80,6 +80,25 @@ class K8sService {
     return resolved
   }
 
+  private get submissionsPvcName(): string | null {
+    const raw = process.env.K8S_SUBMISSIONS_PVC
+    return raw && raw.trim().length > 0 ? raw.trim() : null
+  }
+
+  private resolveAndValidateSubPath(absPath: string, rootAbsPath: string): string {
+    const resolved = path.resolve(absPath)
+    const resolvedRoot = path.resolve(rootAbsPath)
+    const relative = path.relative(resolvedRoot, resolved)
+
+    // Reject anything outside the configured root (including traversals).
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error(`Refusing to mount path outside submissions root. root=${resolvedRoot} path=${resolved}`)
+    }
+
+    // K8s subPath must be a relative path.
+    return relative
+  }
+
   /**
    * Create a K8s Job resource to run the grading container.
    * Returns the Job name.
@@ -97,8 +116,8 @@ class K8sService {
       cpuLimitMillicores,
     } = params
 
-    const resolvedInputPath = this.resolveAndValidateHostPath(inputPath, 'K8S_SUBMISSIONS_ROOT')
-    const resolvedOutputPath = this.resolveAndValidateHostPath(outputPath, 'K8S_OUTPUT_ROOT')
+    const resolvedInputPath = path.resolve(inputPath)
+    const resolvedOutputPath = path.resolve(outputPath)
 
     const jobName = this.getJobName(jobId)
 
@@ -106,6 +125,62 @@ class K8sService {
     const memoryLimit = `${memoryLimitMb}Mi`
     const cpuRequest = `${Math.floor(cpuLimitMillicores / 2)}m`
     const cpuLimit = `${cpuLimitMillicores}m`
+
+    const submissionsRoot = process.env.SUBMISSIONS_PATH ?? '/data/submissions'
+    const pvcName = this.submissionsPvcName
+
+    const volumes: k8s.V1Volume[] = [
+      {
+        name: 'tmp',
+        emptyDir: {},
+      },
+    ]
+
+    const volumeMounts: k8s.V1VolumeMount[] = [
+      {
+        name: 'tmp',
+        mountPath: '/tmp',
+        readOnly: false,
+      },
+    ]
+
+    if (pvcName) {
+      const inputSubPath = this.resolveAndValidateSubPath(resolvedInputPath, submissionsRoot)
+      const outputSubPath = this.resolveAndValidateSubPath(resolvedOutputPath, submissionsRoot)
+
+      volumes.unshift({
+        name: 'submissions',
+        persistentVolumeClaim: { claimName: pvcName, readOnly: false },
+      })
+
+      volumeMounts.unshift(
+        {
+          name: 'submissions',
+          mountPath: '/grading/submission',
+          subPath: inputSubPath,
+          readOnly: true,
+        },
+        {
+          name: 'submissions',
+          mountPath: '/grading/output',
+          subPath: outputSubPath,
+          readOnly: false,
+        }
+      )
+    } else {
+      const hostInput = this.resolveAndValidateHostPath(resolvedInputPath, 'K8S_SUBMISSIONS_ROOT')
+      const hostOutput = this.resolveAndValidateHostPath(resolvedOutputPath, 'K8S_OUTPUT_ROOT')
+
+      volumes.unshift(
+        { name: 'submission-input', hostPath: { path: hostInput, type: 'Directory' } },
+        { name: 'grading-output', hostPath: { path: hostOutput, type: 'DirectoryOrCreate' } }
+      )
+
+      volumeMounts.unshift(
+        { name: 'submission-input', mountPath: '/grading/submission', readOnly: true },
+        { name: 'grading-output', mountPath: '/grading/output', readOnly: false }
+      )
+    }
 
     const manifest: k8s.V1Job = {
       apiVersion: 'batch/v1',
@@ -136,20 +211,7 @@ class K8sService {
             // Disable all automounted service-account tokens — grading pods
             // have no reason to talk to the K8s API.
             automountServiceAccountToken: false,
-            volumes: [
-              {
-                name: 'submission-input',
-                hostPath: { path: resolvedInputPath, type: 'Directory' },
-              },
-              {
-                name: 'grading-output',
-                hostPath: { path: resolvedOutputPath, type: 'DirectoryOrCreate' },
-              },
-              {
-                name: 'tmp',
-                emptyDir: {},
-              },
-            ],
+            volumes,
             containers: [
               {
                 name: 'grader',
@@ -162,23 +224,7 @@ class K8sService {
                   requests: { memory: memoryRequest, cpu: cpuRequest },
                   limits: { memory: memoryLimit, cpu: cpuLimit },
                 },
-                volumeMounts: [
-                  {
-                    name: 'submission-input',
-                    mountPath: '/grading/submission',
-                    readOnly: true,
-                  },
-                  {
-                    name: 'grading-output',
-                    mountPath: '/grading/output',
-                    readOnly: false,
-                  },
-                  {
-                    name: 'tmp',
-                    mountPath: '/tmp',
-                    readOnly: false,
-                  },
-                ],
+                volumeMounts,
                 securityContext: {
                   runAsNonRoot: true,
                   readOnlyRootFilesystem: true,

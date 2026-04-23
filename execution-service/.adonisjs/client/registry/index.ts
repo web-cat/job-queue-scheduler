@@ -6,6 +6,48 @@ import type { ApiDefinition } from './tree.d.ts'
 const placeholder: any = {}
 
 const routes = {
+  'images.index': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/images',
+    tokens: [{"old":"/api/v1/images","type":0,"val":"api","end":""},{"old":"/api/v1/images","type":0,"val":"v1","end":""},{"old":"/api/v1/images","type":0,"val":"images","end":""}],
+    types: placeholder as Registry['images.index']['types'],
+  },
+  'images.store': {
+    methods: ["POST"],
+    pattern: '/api/v1/images',
+    tokens: [{"old":"/api/v1/images","type":0,"val":"api","end":""},{"old":"/api/v1/images","type":0,"val":"v1","end":""},{"old":"/api/v1/images","type":0,"val":"images","end":""}],
+    types: placeholder as Registry['images.store']['types'],
+  },
+  'images.stats': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/images/:id/stats',
+    tokens: [{"old":"/api/v1/images/:id/stats","type":0,"val":"api","end":""},{"old":"/api/v1/images/:id/stats","type":0,"val":"v1","end":""},{"old":"/api/v1/images/:id/stats","type":0,"val":"images","end":""},{"old":"/api/v1/images/:id/stats","type":1,"val":"id","end":""},{"old":"/api/v1/images/:id/stats","type":0,"val":"stats","end":""}],
+    types: placeholder as Registry['images.stats']['types'],
+  },
+  'images.show': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/images/:id',
+    tokens: [{"old":"/api/v1/images/:id","type":0,"val":"api","end":""},{"old":"/api/v1/images/:id","type":0,"val":"v1","end":""},{"old":"/api/v1/images/:id","type":0,"val":"images","end":""},{"old":"/api/v1/images/:id","type":1,"val":"id","end":""}],
+    types: placeholder as Registry['images.show']['types'],
+  },
+  'images.update': {
+    methods: ["PUT"],
+    pattern: '/api/v1/images/:id',
+    tokens: [{"old":"/api/v1/images/:id","type":0,"val":"api","end":""},{"old":"/api/v1/images/:id","type":0,"val":"v1","end":""},{"old":"/api/v1/images/:id","type":0,"val":"images","end":""},{"old":"/api/v1/images/:id","type":1,"val":"id","end":""}],
+    types: placeholder as Registry['images.update']['types'],
+  },
+  'images.destroy': {
+    methods: ["DELETE"],
+    pattern: '/api/v1/images/:id',
+    tokens: [{"old":"/api/v1/images/:id","type":0,"val":"api","end":""},{"old":"/api/v1/images/:id","type":0,"val":"v1","end":""},{"old":"/api/v1/images/:id","type":0,"val":"images","end":""},{"old":"/api/v1/images/:id","type":1,"val":"id","end":""}],
+    types: placeholder as Registry['images.destroy']['types'],
+  },
+  'jobs.store': {
+    methods: ["POST"],
+    pattern: '/api/v1/jobs',
+    tokens: [{"old":"/api/v1/jobs","type":0,"val":"api","end":""},{"old":"/api/v1/jobs","type":0,"val":"v1","end":""},{"old":"/api/v1/jobs","type":0,"val":"jobs","end":""}],
+    types: placeholder as Registry['jobs.store']['types'],
+  },
   'jobs.index': {
     methods: ["GET","HEAD"],
     pattern: '/api/v1/jobs',
@@ -23,6 +65,12 @@ const routes = {
     pattern: '/api/v1/jobs/:id/results',
     tokens: [{"old":"/api/v1/jobs/:id/results","type":0,"val":"api","end":""},{"old":"/api/v1/jobs/:id/results","type":0,"val":"v1","end":""},{"old":"/api/v1/jobs/:id/results","type":0,"val":"jobs","end":""},{"old":"/api/v1/jobs/:id/results","type":1,"val":"id","end":""},{"old":"/api/v1/jobs/:id/results","type":0,"val":"results","end":""}],
     types: placeholder as Registry['jobs.results']['types'],
+  },
+  'jobs.payload': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/jobs/:id/payload',
+    tokens: [{"old":"/api/v1/jobs/:id/payload","type":0,"val":"api","end":""},{"old":"/api/v1/jobs/:id/payload","type":0,"val":"v1","end":""},{"old":"/api/v1/jobs/:id/payload","type":0,"val":"jobs","end":""},{"old":"/api/v1/jobs/:id/payload","type":1,"val":"id","end":""},{"old":"/api/v1/jobs/:id/payload","type":0,"val":"payload","end":""}],
+    types: placeholder as Registry['jobs.payload']['types'],
   },
   'jobs.destroy': {
     methods: ["DELETE"],

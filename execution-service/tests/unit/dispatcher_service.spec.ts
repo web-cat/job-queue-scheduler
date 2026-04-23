@@ -562,12 +562,13 @@ test.group('DispatcherService — payload extraction', (group) => {
       writePayload: { name: 'payload.zip', content: 'zip-bytes-here' },
     })
 
-    const flakyLifecycle = {
-      ...defaultJobLifecycleService,
+    // `defaultJobLifecycleService` is a class instance; spreading it drops prototype methods.
+    // Create a delegating object and override the one method we want to fail.
+    const flakyLifecycle = Object.assign(Object.create(defaultJobLifecycleService), {
       markCompleted: async () => {
         throw new Error('simulated DB failure during markCompleted')
       },
-    } as typeof defaultJobLifecycleService
+    }) as typeof defaultJobLifecycleService
 
     const dispatcher = new DispatcherService(fake, flakyLifecycle, testFiles)
     await dispatcher.runIteration()

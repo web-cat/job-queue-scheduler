@@ -1,0 +1,226 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: webcat-submissions-pvc
+  namespace: cs4094-22646-s26-web-cat-execution-service
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: ceph-rbd 
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webcat-execution-service-api
+  namespace: cs4094-22646-s26-web-cat-execution-service
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: webcat-execution-service-api
+  template:
+    metadata:
+      labels:
+        app: webcat-execution-service-api
+    spec:
+      imagePullSecrets:
+        - name: registry-credential 
+      serviceAccountName: webcat-dispatcher-sa
+      initContainers:
+        - name: migrate
+          image: ghcr.io/sytraore/job-queue-scheduler/execution-service:latest
+          imagePullPolicy: Always
+          command: ["node", "ace.js", "migration:run", "--force"]
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "3333"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: SESSION_DRIVER
+              value: "cookie"
+            - name: DB_CONNECTION
+              value: "pg"
+            - name: DB_HOST
+              value: "db-service"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef: { name: database-secrets, key: db_name }
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef: { name: database-secrets, key: db_user }
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: database-secrets, key: db_password }
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef: { name: api-secrets, key: app_key }
+            - name: APP_URL
+              value: "https://web-cat-execution-service.discovery.cs.vt.edu"
+            - name: SUBMISSIONS_PATH
+              value: "/data/submissions"
+            - name: ENABLE_DISPATCHER
+              value: "false"
+      containers:
+        - name: api
+          image: ghcr.io/sytraore/job-queue-scheduler/execution-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3333
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "3333"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: SESSION_DRIVER
+              value: "cookie"
+            - name: DB_CONNECTION
+              value: "pg"
+            - name: DB_HOST
+              value: "db-service"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef: { name: database-secrets, key: db_name }
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef: { name: database-secrets, key: db_user }
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: database-secrets, key: db_password }
+            - name: K8S_NAMESPACE
+              value: "cs4094-22646-s26-web-cat-execution-service"
+            - name: K8S_SUBMISSIONS_PVC
+              value: "webcat-submissions-pvc"
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef: { name: api-secrets, key: app_key }
+            - name: APP_URL
+              value: "https://web-cat-execution-service.discovery.cs.vt.edu" 
+            - name: SUBMISSIONS_PATH
+              value: "/data/submissions"
+            - name: ENABLE_DISPATCHER
+              value: "false"
+          livenessProbe:
+            httpGet: { path: /api/v1/health, port: 3333 } 
+            initialDelaySeconds: 20 
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /api/v1/health, port: 3333 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1000m"
+              memory: 512Mi
+          volumeMounts:
+            - name: submissions
+              mountPath: /data/submissions
+        - name: dispatcher
+          image: ghcr.io/sytraore/job-queue-scheduler/execution-service:latest
+          imagePullPolicy: Always
+          command: ["node", "ace.js", "dispatcher:run"]
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "3333"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: SESSION_DRIVER
+              value: "cookie"
+            - name: DB_CONNECTION
+              value: "pg"
+            - name: DB_HOST
+              value: "db-service"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef: { name: database-secrets, key: db_name }
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef: { name: database-secrets, key: db_user }
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: database-secrets, key: db_password }
+            - name: K8S_NAMESPACE
+              value: "cs4094-22646-s26-web-cat-execution-service"
+            - name: K8S_SUBMISSIONS_PVC
+              value: "webcat-submissions-pvc"
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef: { name: api-secrets, key: app_key }
+            - name: APP_URL
+              value: "https://web-cat-execution-service.discovery.cs.vt.edu"
+            - name: SUBMISSIONS_PATH
+              value: "/data/submissions"
+            - name: ENABLE_DISPATCHER
+              value: "true"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1000m"
+              memory: 512Mi
+          volumeMounts:
+            - name: submissions
+              mountPath: /data/submissions
+      volumes:
+        - name: submissions
+          persistentVolumeClaim:
+            claimName: webcat-submissions-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webcat-execution-service-api
+  namespace: cs4094-22646-s26-web-cat-execution-service
+spec:
+  type: ClusterIP
+  selector:
+    app: webcat-execution-service-api
+  ports:
+    - name: http
+      port: 3333
+      targetPort: 3333
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: webcat-execution-service-api
+  namespace: cs4094-22646-s26-web-cat-execution-service
+  annotations:
+    kubernetes.io/ingress.class: nginx 
+spec:
+  rules:
+    - host: web-cat-execution-service.discovery.cs.vt.edu 
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: webcat-execution-service-api
+                port:
+                  number: 3333

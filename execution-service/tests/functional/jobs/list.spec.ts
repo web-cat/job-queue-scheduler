@@ -210,7 +210,8 @@ test.group('GET /api/v1/jobs — list with filters and pagination', (group) => {
   })
 
   test('rejects invalid status enum value with 422', async ({ client }) => {
-    const res = await client.get('/api/v1/jobs').qs({ status: 'bogus' })
+    // Intentionally bypass request typing to verify validator rejects unknown enum values.
+    const res = await client.get('/api/v1/jobs').qs({ status: 'bogus' as any })
     res.assertStatus(422)
   })
 

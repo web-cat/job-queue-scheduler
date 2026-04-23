@@ -7,6 +7,8 @@ import { dbAssertions } from '@adonisjs/lucid/plugins/db'
 import testUtils from '@adonisjs/core/services/test_utils'
 import { sessionApiClient } from '@adonisjs/session/plugins/api_client'
 import type { Registry } from '../.adonisjs/client/registry/schema.d.ts'
+import { mkdir, rm } from 'node:fs/promises'
+import path from 'node:path'
 
 /**
  * This file is imported by the "bin/test.ts" entrypoint file
@@ -39,8 +41,31 @@ export const plugins: Config['plugins'] = [
  * The teardown functions are executed after all the tests
  */
 export const runnerHooks: Required<Pick<Config, 'setup' | 'teardown'>> = {
-  setup: [],
-  teardown: [],
+  setup: [
+    async () => {
+      // Functional tests must not write to `/data/*` on developer machines/CI.
+      // Keep the default singleton FileService behaviour, but point it at tmp.
+      const submissions = app.tmpPath('test-submissions')
+      const payloads = app.tmpPath('test-payloads')
+      process.env.SUBMISSIONS_PATH = submissions
+      process.env.PAYLOADS_PATH = payloads
+      await mkdir(submissions, { recursive: true })
+      await mkdir(payloads, { recursive: true })
+    },
+  ],
+  teardown: [
+    async () => {
+      const submissions = process.env.SUBMISSIONS_PATH
+      const payloads = process.env.PAYLOADS_PATH
+      // Best-effort cleanup. Individual tests also clean up job-specific dirs.
+      if (submissions && submissions.includes(path.join('tmp', ''))) {
+        await rm(submissions, { recursive: true, force: true })
+      }
+      if (payloads && payloads.includes(path.join('tmp', ''))) {
+        await rm(payloads, { recursive: true, force: true })
+      }
+    },
+  ],
 }
 
 /**
