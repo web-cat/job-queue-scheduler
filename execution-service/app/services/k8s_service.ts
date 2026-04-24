@@ -85,6 +85,11 @@ class K8sService {
     return raw && raw.trim().length > 0 ? raw.trim() : null
   }
 
+  private get imagePullSecretName(): string | null {
+    const raw = process.env.K8S_IMAGE_PULL_SECRET
+    return raw && raw.trim().length > 0 ? raw.trim() : null
+  }
+
   private resolveAndValidateSubPath(absPath: string, rootAbsPath: string): string {
     const resolved = path.resolve(absPath)
     const resolvedRoot = path.resolve(rootAbsPath)
@@ -208,9 +213,36 @@ class K8sService {
           },
           spec: {
             restartPolicy: 'Never',
+            // Discovery uses ceph-rbd which is RWO at the node-attachment level.
+            // When we mount the same submissions PVC with subPath, the grading pod
+            // must schedule onto the same node as the API/dispatcher pod that
+            // already attached the volume, otherwise we hit Multi-Attach errors.
+            affinity: pvcName
+              ? {
+                  podAffinity: {
+                    requiredDuringSchedulingIgnoredDuringExecution: [
+                      {
+                        labelSelector: {
+                          matchExpressions: [
+                            {
+                              key: 'app',
+                              operator: 'In',
+                              values: ['webcat-execution-service-api'],
+                            },
+                          ],
+                        },
+                        topologyKey: 'kubernetes.io/hostname',
+                      },
+                    ],
+                  },
+                }
+              : undefined,
             // Disable all automounted service-account tokens — grading pods
             // have no reason to talk to the K8s API.
             automountServiceAccountToken: false,
+            ...(this.imagePullSecretName
+              ? { imagePullSecrets: [{ name: this.imagePullSecretName }] }
+              : {}),
             volumes,
             containers: [
               {

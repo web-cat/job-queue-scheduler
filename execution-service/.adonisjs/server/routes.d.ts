@@ -18,6 +18,8 @@ export type ScannedRoutes = {
     'jobs.destroy': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
     'queue.status': { paramsTuple?: []; params?: {} }
     'queue.position': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
+    'access_token.store': { paramsTuple?: []; params?: {} }
+    'access_token.destroy': { paramsTuple?: []; params?: {} }
     'config.index': { paramsTuple?: []; params?: {} }
     'config.update': { paramsTuple: [ParamValue]; params: {'key': ParamValue} }
     'metrics.overview': { paramsTuple?: []; params?: {} }
@@ -57,6 +59,7 @@ export type ScannedRoutes = {
   POST: {
     'images.store': { paramsTuple?: []; params?: {} }
     'jobs.store': { paramsTuple?: []; params?: {} }
+    'access_token.store': { paramsTuple?: []; params?: {} }
   }
   PUT: {
     'images.update': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
@@ -65,6 +68,7 @@ export type ScannedRoutes = {
   DELETE: {
     'images.destroy': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
     'jobs.destroy': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
+    'access_token.destroy': { paramsTuple?: []; params?: {} }
   }
 }
 declare module '@adonisjs/core/types/http' {

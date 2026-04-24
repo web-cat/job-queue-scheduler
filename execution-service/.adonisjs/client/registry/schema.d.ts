@@ -175,6 +175,30 @@ export interface Registry {
       errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/queue_controller').default['position']>>>
     }
   }
+  'access_token.store': {
+    methods: ["POST"]
+    pattern: '/api/v1/auth/token'
+    types: {
+      body: ExtractBody<InferInput<(typeof import('#validators/user').loginValidator)>>
+      paramsTuple: []
+      params: {}
+      query: ExtractQuery<InferInput<(typeof import('#validators/user').loginValidator)>>
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/access_token_controller').default['store']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/access_token_controller').default['store']>>> | { status: 422; response: { errors: SimpleError[] } }
+    }
+  }
+  'access_token.destroy': {
+    methods: ["DELETE"]
+    pattern: '/api/v1/auth/token'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/access_token_controller').default['destroy']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/access_token_controller').default['destroy']>>>
+    }
+  }
   'config.index': {
     methods: ["GET","HEAD"]
     pattern: '/api/v1/config'

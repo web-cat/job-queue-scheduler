@@ -43,6 +43,15 @@ export const plugins: Config['plugins'] = [
 export const runnerHooks: Required<Pick<Config, 'setup' | 'teardown'>> = {
   setup: [
     async () => {
+      // Service-to-service auth is required for all API routes in production.
+      // In tests, set a deterministic key and have the API client attach it
+      // to every request using the `X-API-Key` header.
+      process.env.SERVICE_API_KEY = process.env.SERVICE_API_KEY || 'test-service-api-key'
+      const { ApiClient } = await import('@japa/api-client')
+      ApiClient.onRequest((request) => {
+        request.header('x-api-key', process.env.SERVICE_API_KEY!)
+      })
+
       // Functional tests must not write to `/data/*` on developer machines/CI.
       // Keep the default singleton FileService behaviour, but point it at tmp.
       const submissions = app.tmpPath('test-submissions')

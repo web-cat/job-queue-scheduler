@@ -1,30 +1,6 @@
 import { test } from '@japa/runner'
 import db from '@adonisjs/lucid/services/db'
 import SystemSetting from '#models/system_setting'
-import User from '#models/user'
-
-const TEST_USER_EMAIL = 'config-test@webcat.local'
-
-/**
- * Create a user and mint an access token. Returns the raw token string
- * to pass in `Authorization: Bearer <token>`.
- */
-async function createAuthedUser(): Promise<string> {
-  const user = await User.firstOrCreate(
-    { email: TEST_USER_EMAIL },
-    { email: TEST_USER_EMAIL, password: 'password123', fullName: 'Config Test' }
-  )
-  const token = await User.accessTokens.create(user)
-  return token.value!.release()
-}
-
-async function cleanUsers() {
-  const user = await User.findBy('email', TEST_USER_EMAIL)
-  if (user) {
-    await db.from('auth_access_tokens').where('tokenable_id', user.id).delete()
-    await user.delete()
-  }
-}
 
 // ---------------------------------------------------------------------------
 // GET /api/v1/config
@@ -32,7 +8,6 @@ async function cleanUsers() {
 
 test.group('GET /api/v1/config', (group) => {
   group.each.setup(async () => {
-    await cleanUsers()
     await db.from('system_settings').delete()
     await SystemSetting.createMany([
       { key: 'scheduler_strategy', value: 'HRRN', description: 'Active scheduler' },
@@ -41,23 +16,18 @@ test.group('GET /api/v1/config', (group) => {
     ])
   })
 
-  group.each.teardown(async () => {
-    await cleanUsers()
+  test('returns 401 without the service API key', async ({ client }) => {
+    const res = await client.get('/api/v1/config').header('x-api-key', '')
+    res.assertStatus(401)
   })
 
-  test('returns 401 without a bearer token', async ({ client }) => {
+  test('returns 401 with an invalid service API key', async ({ client }) => {
+    const res = await client.get('/api/v1/config').header('x-api-key', 'not-a-real-key')
+    res.assertStatus(401)
+  })
+
+  test('returns all system settings with a valid service API key', async ({ client, assert }) => {
     const res = await client.get('/api/v1/config')
-    res.assertStatus(401)
-  })
-
-  test('returns 401 with an invalid bearer token', async ({ client }) => {
-    const res = await client.get('/api/v1/config').bearerToken('not-a-real-token')
-    res.assertStatus(401)
-  })
-
-  test('returns all system settings with a valid token', async ({ client, assert }) => {
-    const token = await createAuthedUser()
-    const res = await client.get('/api/v1/config').bearerToken(token)
     res.assertStatus(200)
 
     const body = res.body() as any
@@ -78,7 +48,6 @@ test.group('GET /api/v1/config', (group) => {
 
 test.group('PUT /api/v1/config/:key', (group) => {
   group.each.setup(async () => {
-    await cleanUsers()
     await db.from('system_settings').delete()
     await SystemSetting.createMany([
       { key: 'scheduler_strategy', value: 'HRRN', description: 'Active scheduler' },
@@ -86,20 +55,17 @@ test.group('PUT /api/v1/config/:key', (group) => {
     ])
   })
 
-  group.each.teardown(async () => {
-    await cleanUsers()
-  })
-
-  test('returns 401 without a bearer token', async ({ client }) => {
-    const res = await client.put('/api/v1/config/scheduler_strategy').json({ value: 'FIFO' })
+  test('returns 401 without the service API key', async ({ client }) => {
+    const res = await client
+      .put('/api/v1/config/scheduler_strategy')
+      .header('x-api-key', '')
+      .json({ value: 'FIFO' })
     res.assertStatus(401)
   })
 
   test('updates a setting and returns the new value', async ({ client, assert }) => {
-    const token = await createAuthedUser()
     const res = await client
       .put('/api/v1/config/scheduler_strategy')
-      .bearerToken(token)
       .json({ value: 'FIFO' })
     res.assertStatus(200)
 
@@ -112,28 +78,22 @@ test.group('PUT /api/v1/config/:key', (group) => {
   })
 
   test('returns 404 for an unknown key', async ({ client }) => {
-    const token = await createAuthedUser()
     const res = await client
       .put('/api/v1/config/does_not_exist')
-      .bearerToken(token)
       .json({ value: 'whatever' })
     res.assertStatus(404)
   })
 
   test('returns 400 when the request body omits "value"', async ({ client }) => {
-    const token = await createAuthedUser()
     const res = await client
       .put('/api/v1/config/scheduler_strategy')
-      .bearerToken(token)
       .json({})
     res.assertStatus(400)
   })
 
   test('rejects invalid scheduler_strategy with 422', async ({ client, assert }) => {
-    const token = await createAuthedUser()
     const res = await client
       .put('/api/v1/config/scheduler_strategy')
-      .bearerToken(token)
       .json({ value: 'BOGUS' })
     res.assertStatus(422)
 
@@ -143,28 +103,22 @@ test.group('PUT /api/v1/config/:key', (group) => {
   })
 
   test('rejects non-integer max_concurrent_jobs with 422', async ({ client }) => {
-    const token = await createAuthedUser()
     const res = await client
       .put('/api/v1/config/max_concurrent_jobs')
-      .bearerToken(token)
       .json({ value: 'not-a-number' })
     res.assertStatus(422)
   })
 
   test('rejects zero / negative max_concurrent_jobs with 422', async ({ client }) => {
-    const token = await createAuthedUser()
     const res = await client
       .put('/api/v1/config/max_concurrent_jobs')
-      .bearerToken(token)
       .json({ value: 0 })
     res.assertStatus(422)
   })
 
   test('accepts a valid positive max_concurrent_jobs', async ({ client, assert }) => {
-    const token = await createAuthedUser()
     const res = await client
       .put('/api/v1/config/max_concurrent_jobs')
-      .bearerToken(token)
       .json({ value: 25 })
     res.assertStatus(200)
 

@@ -4,28 +4,9 @@ import db from '@adonisjs/lucid/services/db'
 import ImageConfig from '#models/image_config'
 import Job from '#models/job'
 import SystemSetting from '#models/system_setting'
-import User from '#models/user'
 
 const METRICS_IMAGE_TAG = 'test/grader:metrics'
 const METRICS_IMAGE_TAG_ALT = 'test/grader:metrics-alt'
-const TEST_USER_EMAIL = 'metrics-test@webcat.local'
-
-async function createAuthedUser(): Promise<string> {
-  const user = await User.firstOrCreate(
-    { email: TEST_USER_EMAIL },
-    { email: TEST_USER_EMAIL, password: 'password123', fullName: 'Metrics Test' }
-  )
-  const token = await User.accessTokens.create(user)
-  return token.value!.release()
-}
-
-async function cleanUsers() {
-  const user = await User.findBy('email', TEST_USER_EMAIL)
-  if (user) {
-    await db.from('auth_access_tokens').where('tokenable_id', user.id).delete()
-    await user.delete()
-  }
-}
 
 async function makeImageConfig(tag: string) {
   return ImageConfig.create({
@@ -142,25 +123,19 @@ async function seedJobs() {
 
 test.group('GET /api/v1/metrics/overview', (group) => {
   group.each.setup(async () => {
-    await cleanUsers()
     await db.from('job_results').delete()
     await db.from('jobs').delete()
     await db.from('image_configs').whereIn('docker_image_tag', [METRICS_IMAGE_TAG, METRICS_IMAGE_TAG_ALT]).delete()
     await seedJobs()
   })
 
-  group.each.teardown(async () => {
-    await cleanUsers()
-  })
-
-  test('returns 401 without a bearer token', async ({ client }) => {
-    const res = await client.get('/api/v1/metrics/overview')
+  test('returns 401 without the service API key', async ({ client }) => {
+    const res = await client.get('/api/v1/metrics/overview').header('x-api-key', '')
     res.assertStatus(401)
   })
 
-  test('returns aggregate metrics with a valid token', async ({ client, assert }) => {
-    const token = await createAuthedUser()
-    const res = await client.get('/api/v1/metrics/overview').bearerToken(token)
+  test('returns aggregate metrics with a valid service API key', async ({ client, assert }) => {
+    const res = await client.get('/api/v1/metrics/overview')
     res.assertStatus(200)
     const body = res.body() as any
 
@@ -187,8 +162,7 @@ test.group('GET /api/v1/metrics/overview', (group) => {
     // Wipe jobs for this specific test
     await db.from('jobs').delete()
 
-    const token = await createAuthedUser()
-    const res = await client.get('/api/v1/metrics/overview').bearerToken(token)
+    const res = await client.get('/api/v1/metrics/overview')
     res.assertStatus(200)
     const body = res.body() as any
 
@@ -207,25 +181,19 @@ test.group('GET /api/v1/metrics/overview', (group) => {
 
 test.group('GET /api/v1/metrics/images', (group) => {
   group.each.setup(async () => {
-    await cleanUsers()
     await db.from('job_results').delete()
     await db.from('jobs').delete()
     await db.from('image_configs').whereIn('docker_image_tag', [METRICS_IMAGE_TAG, METRICS_IMAGE_TAG_ALT]).delete()
     await seedJobs()
   })
 
-  group.each.teardown(async () => {
-    await cleanUsers()
-  })
-
-  test('returns 401 without a bearer token', async ({ client }) => {
-    const res = await client.get('/api/v1/metrics/images')
+  test('returns 401 without the service API key', async ({ client }) => {
+    const res = await client.get('/api/v1/metrics/images').header('x-api-key', '')
     res.assertStatus(401)
   })
 
-  test('returns per-image breakdown with a valid token', async ({ client, assert }) => {
-    const token = await createAuthedUser()
-    const res = await client.get('/api/v1/metrics/images').bearerToken(token)
+  test('returns per-image breakdown with a valid service API key', async ({ client, assert }) => {
+    const res = await client.get('/api/v1/metrics/images')
     res.assertStatus(200)
     const body = res.body() as any
 

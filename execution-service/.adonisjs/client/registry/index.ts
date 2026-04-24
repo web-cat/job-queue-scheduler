@@ -90,6 +90,18 @@ const routes = {
     tokens: [{"old":"/api/v1/queue/position/:id","type":0,"val":"api","end":""},{"old":"/api/v1/queue/position/:id","type":0,"val":"v1","end":""},{"old":"/api/v1/queue/position/:id","type":0,"val":"queue","end":""},{"old":"/api/v1/queue/position/:id","type":0,"val":"position","end":""},{"old":"/api/v1/queue/position/:id","type":1,"val":"id","end":""}],
     types: placeholder as Registry['queue.position']['types'],
   },
+  'access_token.store': {
+    methods: ["POST"],
+    pattern: '/api/v1/auth/token',
+    tokens: [{"old":"/api/v1/auth/token","type":0,"val":"api","end":""},{"old":"/api/v1/auth/token","type":0,"val":"v1","end":""},{"old":"/api/v1/auth/token","type":0,"val":"auth","end":""},{"old":"/api/v1/auth/token","type":0,"val":"token","end":""}],
+    types: placeholder as Registry['access_token.store']['types'],
+  },
+  'access_token.destroy': {
+    methods: ["DELETE"],
+    pattern: '/api/v1/auth/token',
+    tokens: [{"old":"/api/v1/auth/token","type":0,"val":"api","end":""},{"old":"/api/v1/auth/token","type":0,"val":"v1","end":""},{"old":"/api/v1/auth/token","type":0,"val":"auth","end":""},{"old":"/api/v1/auth/token","type":0,"val":"token","end":""}],
+    types: placeholder as Registry['access_token.destroy']['types'],
+  },
   'config.index': {
     methods: ["GET","HEAD"],
     pattern: '/api/v1/config',

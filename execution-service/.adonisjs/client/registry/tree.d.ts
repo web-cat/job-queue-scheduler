@@ -22,6 +22,10 @@ export interface ApiDefinition {
     status: typeof routes['queue.status']
     position: typeof routes['queue.position']
   }
+  accessToken: {
+    store: typeof routes['access_token.store']
+    destroy: typeof routes['access_token.destroy']
+  }
   config: {
     index: typeof routes['config.index']
     update: typeof routes['config.update']

@@ -1,8 +1,28 @@
 # API Endpoints
 
-Base URL: `/api/v1`
+Base URL: `https://web-cat-execution-service.discovery.cs.vt.edu/api/v1`
 All responses are wrapped in `{ data: ... }` by the API provider.
 Error responses: `{ error: { code: string, message: string } }`
+
+---
+
+## Service-to-service authentication (required)
+
+This service expects requests from the other team’s backend (not direct end-user auth).
+
+**All `/api/v1/*` endpoints require a shared API key**, except:
+- `GET /api/v1/health`
+
+Send the key using the header:
+- `X-API-Key: <SERVICE_API_KEY>`
+
+If missing/invalid, the API returns `401` with:
+
+```json
+{
+  "errors": [{ "message": "Unauthorized access" }]
+}
+```
 
 ---
 
