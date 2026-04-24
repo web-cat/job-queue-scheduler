@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: webcat-execution-service-pgdata
+  namespace: cs4094-22646-s26-web-cat-execution-service
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ceph-rbd
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-db
+  namespace: cs4094-22646-s26-web-cat-execution-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-db
+  template:
+    metadata:
+      labels:
+        app: postgres-db
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: postgres
+        image: postgres:latest
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: database-secrets
+              key: db_password
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: database-secrets
+              key: db_user
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: database-secrets
+              key: db_name
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: web-cat-execution-service-pgdata
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-service
+  namespace: cs4094-22646-s26-web-cat-execution-service
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres-db
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP

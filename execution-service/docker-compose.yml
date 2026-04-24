@@ -21,36 +21,11 @@ services:
 
 # This is a local development configuration for the database service
 # TODO: Comment out when ready to deploy
-  database_service:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-    ports:
-      - "5432:5432"
-    volumes:
-      - execution_service_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-volumes:
-  execution_service_pgdata:
-
-
-# TODO: Uncomment when ready to deploy
-
-# services:
 #   database_service:
 #     image: postgres:16
 #     environment:
 #       POSTGRES_USER: ${DB_USER}
-#       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
-#       secret:
-#         - db_password
+#       POSTGRES_PASSWORD: ${DB_PASSWORD}
 #       POSTGRES_DB: ${DB_NAME}
 #     ports:
 #       - "5432:5432"
@@ -65,6 +40,31 @@ volumes:
 # volumes:
 #   execution_service_pgdata:
 
-# secrets:
-#   db_password:
-#     file: ./db_password.txt
+
+# TODO: Uncomment when ready to deploy
+
+
+  database_service:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      secret:
+        - db_password
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - execution_service_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  execution_service_pgdata:
+
+secrets:
+  db_password:
+    file: ./db_password.txt

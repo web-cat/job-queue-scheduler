@@ -1,4 +1,4 @@
-import { access, constants, copyFile, mkdir, readdir, readFile, rename, rm, stat, unlink } from 'node:fs/promises'
+import { access, chmod, constants, copyFile, mkdir, readdir, readFile, rename, rm, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { Dirent } from 'node:fs'
 import type { MultipartFile } from '@adonisjs/core/bodyparser'
@@ -245,7 +245,14 @@ export class FileService {
   async prepareOutputDirectory(jobId: number): Promise<string> {
     const outputPath = this.getOutputPath(jobId)
     try {
-      await mkdir(outputPath, { recursive: true, mode: 0o755 })
+      // Grading pods run as a non-root user. On Discovery, the API/dispatcher
+      // containers may create this directory as root, which would make it
+      // unwritable to the grader when mounted via PVC subPath.
+      //
+      // Make the output directory world-writable to keep the grader contract
+      // simple: it must always be able to write `results.json`.
+      await mkdir(outputPath, { recursive: true, mode: 0o777 })
+      await chmod(outputPath, 0o777).catch(() => undefined)
       await access(outputPath, constants.W_OK)
     } catch (err: any) {
       logFsError('prepareOutputDirectory', err)

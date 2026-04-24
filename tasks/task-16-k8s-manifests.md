@@ -1,318 +1,125 @@
 # Task 16: Kubernetes Manifests & Deployment Config
 
-**Status:** Not Started
-**Assignee:** (pick up)
+**Status:** Completed
+**Assignee:** Sy
 **Priority:** LOW — do this last, after everything works locally
 **Dependencies:** All other tasks (this deploys what they build)
 
 ## Context
 
-Everything runs on Endeavour, a single CS department server running k3s. This task creates the K8s manifests and deployment tooling to go from "works on docker-compose" to "runs on Endeavour."
+This task is about turning “it works locally (docker-compose)” into “it runs on Kubernetes”.
+
+Originally, this task targeted **Endeavour (single-node k3s)**, where `hostPath` volumes are a reasonable default. During deployment, we adapted the work to **Discovery (Virginia Tech)**, which requires:
+
+- **Ingress** for external access
+- **Dynamically provisioned PVCs** (no `hostPath`)
+- A storage class (`ceph-rbd`) that is **ReadWriteOnce (RWO)**, which strongly influences pod topology
+- **Restricted RBAC** (e.g. `pods/log` cannot have `delete`)
+
+Because of Discovery’s RWO constraint, the “separate dispatcher Deployment” pattern becomes problematic if both API and dispatcher need to mount the same submissions volume. The final architecture uses a **sidecar dispatcher** in the same Pod as the API.
 
 ## What to Build
 
-### 1. Directory Structure
+### 1) Deliverables (what must exist in-repo)
+
+These files are the “source of truth” for how the execution service is deployed on Discovery:
 
 ```
 infra/
-├── k8s/
-│   ├── namespace.yaml
-│   ├── configmap.yaml
-│   ├── secret.yaml
-│   ├── api-deployment.yaml
-│   ├── api-service.yaml
-│   ├── dispatcher-deployment.yaml
-│   ├── postgres-statefulset.yaml    (if running PG as a pod)
-│   ├── postgres-service.yaml
-│   ├── pv-submissions.yaml
-│   └── network-policy.yaml
-├── Makefile
-└── README.md
+├── api-dispatcher-deployment.yaml   # API + dispatcher sidecar + initContainer(migrate) + Service + Ingress + submissions PVC
+├── dispatcher-rbac.yaml             # ServiceAccount + Role + RoleBinding for dispatcher (Discovery-compliant verbs)
+└── db-deployment.yaml               # Postgres Deployment + Service + pgdata PVC
+
+docs/
+└── DEPLOYMENT.md                    # how to build/push + deploy + debug
 ```
 
-### 2. Namespace
+> Note: earlier task templates referenced `infra/k8s/*`. In this repo, we consolidated to `infra/*.yaml`.
 
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: webcat
-```
+### 2) Kubernetes resources to define (Discovery)
 
-### 3. ConfigMap
+**A) PostgreSQL (`infra/db-deployment.yaml`)**
 
-Non-sensitive configuration:
+- **PVC** for pgdata (RWO, `ceph-rbd`)
+- **Deployment** `postgres-db`
+- **Service** `db-service` (ClusterIP)
+- Reads `POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB` from `database-secrets`
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: webcat-config
-  namespace: webcat
-data:
-  NODE_ENV: "production"
-  PORT: "3333"
-  DB_HOST: "postgres-service"
-  DB_PORT: "5432"
-  DB_DATABASE: "webcat"
-  SUBMISSIONS_PATH: "/data/submissions"
-  ENABLE_DISPATCHER: "true"
-  LOG_LEVEL: "info"
-```
+**B) Execution service (API + dispatcher in one Pod) (`infra/api-dispatcher-deployment.yaml`)**
 
-### 4. Secret
+- **PVC** for submissions (RWO, `ceph-rbd`)
+- **Deployment** `webcat-execution-service-api`
+  - `strategy.type: Recreate` (required for RWO PVC)
+  - `imagePullSecrets: registry-credential` (GHCR pull)
+  - `serviceAccountName: webcat-dispatcher-sa`
+  - `initContainer: migrate` runs `node ace.js migration:run --force`
+  - **API container** runs HTTP server; `ENABLE_DISPATCHER=false`
+  - **Dispatcher container (sidecar)** runs `node ace.js dispatcher:run`; `ENABLE_DISPATCHER=true`
+  - Both containers mount submissions PVC at `/data/submissions`
+  - Both containers set:
+    - `K8S_NAMESPACE` to Discovery namespace
+    - `K8S_SUBMISSIONS_PVC` to the submissions PVC name
+    - `APP_URL` to the Discovery ingress hostname (`*.discovery.cs.vt.edu`)
+- **Service** `webcat-execution-service-api` (ClusterIP)
+- **Ingress** routes host `web-cat-execution-service.discovery.cs.vt.edu` → service port 3333
 
-Sensitive configuration:
+**C) Dispatcher RBAC (`infra/dispatcher-rbac.yaml`)**
 
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: webcat-secrets
-  namespace: webcat
-type: Opaque
-stringData:
-  DB_USER: "webcat_admin"
-  DB_PASSWORD: "CHANGE_ME_IN_PRODUCTION"
-  APP_KEY: "GENERATE_A_REAL_KEY"
-```
+- **ServiceAccount** `webcat-dispatcher-sa`
+- **Role** allowing:
+  - `batch/jobs`: `create,delete,get,list,watch`
+  - `pods`: `get,list,watch,delete`
+  - `pods/log`: **`get` only** (Discovery restriction)
+- **RoleBinding** binding SA → Role in the namespace
 
-### 5. API Deployment + Service
+### 3) Required application-level changes (Discovery compatibility)
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: webcat-api
-  namespace: webcat
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: webcat-api
-  template:
-    metadata:
-      labels:
-        app: webcat-api
-    spec:
-      containers:
-        - name: api
-          image: webcat/execution-service:latest
-          ports:
-            - containerPort: 3333
-          envFrom:
-            - configMapRef:
-                name: webcat-config
-            - secretRef:
-                name: webcat-secrets
-          env:
-            - name: ENABLE_DISPATCHER
-              value: "false"    # API pod does NOT run the dispatcher
-          resources:
-            requests:
-              cpu: "250m"
-              memory: "256Mi"
-            limits:
-              cpu: "1000m"
-              memory: "512Mi"
-          livenessProbe:
-            httpGet:
-              path: /api/v1/health
-              port: 3333
-            initialDelaySeconds: 10
-            periodSeconds: 30
-          readinessProbe:
-            httpGet:
-              path: /api/v1/health
-              port: 3333
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          volumeMounts:
-            - name: submissions
-              mountPath: /data/submissions
-      volumes:
-        - name: submissions
-          hostPath:
-            path: /data/webcat/submissions
-            type: DirectoryOrCreate
-```
+These changes are needed so the runtime behavior matches Discovery constraints:
 
-Service to expose the API:
+- **No-port-conflict dispatcher entrypoint**
+  - Add `execution-service/commands/dispatcher_run.ts` with Ace command `dispatcher:run`
+  - Must *not* start an HTTP server
+  - Must set `static options = { startApp: true }` so Lucid/providers boot
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: webcat-api-service
-  namespace: webcat
-spec:
-  type: NodePort
-  selector:
-    app: webcat-api
-  ports:
-    - port: 3333
-      targetPort: 3333
-      nodePort: 30333    # accessible at endeavour:30333
-```
+- **Grading Jobs must mount PVC/subPath (not hostPath)**
+  - Update `execution-service/app/services/k8s_service.ts` so `createGradingJob()`:
+    - uses PVC + `subPath` when `K8S_SUBMISSIONS_PVC` is set
+    - retains `hostPath` fallback for non-Discovery environments
 
-### 6. Dispatcher Deployment
+### 4) Docker image requirements
 
-Same image as the API but with `ENABLE_DISPATCHER=true`:
+- Must build/push an image usable on Discovery nodes:
+  - `docker buildx build --platform linux/amd64 ... --push`
+- Image must contain the production build artifacts (including `ace.js`)
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: webcat-dispatcher
-  namespace: webcat
-spec:
-  replicas: 1    # only one dispatcher
-  selector:
-    matchLabels:
-      app: webcat-dispatcher
-  template:
-    metadata:
-      labels:
-        app: webcat-dispatcher
-    spec:
-      serviceAccountName: webcat-dispatcher-sa    # needs K8s API access
-      containers:
-        - name: dispatcher
-          image: webcat/execution-service:latest
-          envFrom:
-            - configMapRef:
-                name: webcat-config
-            - secretRef:
-                name: webcat-secrets
-          env:
-            - name: ENABLE_DISPATCHER
-              value: "true"
-          resources:
-            requests:
-              cpu: "250m"
-              memory: "256Mi"
-            limits:
-              cpu: "1000m"
-              memory: "512Mi"
-          volumeMounts:
-            - name: submissions
-              mountPath: /data/submissions
-      volumes:
-        - name: submissions
-          hostPath:
-            path: /data/webcat/submissions
-            type: DirectoryOrCreate
-```
+### 5) Documentation requirements
 
-### 7. Dispatcher ServiceAccount + RBAC
+`docs/DEPLOYMENT.md` should cover (at minimum):
 
-The dispatcher needs permission to create/delete/watch K8s Jobs and Pods:
+- Prereqs for Discovery (namespace, secrets, registry credentials, storageclass expectations)
+- How to build/push the `linux/amd64` image to GHCR
+- How to apply manifests in `infra/`
+- How to confirm health (`/api/v1/health`)
+- How to read logs for `api` vs `dispatcher` containers
+- Troubleshooting:
+  - migrations not run (and initContainer behavior)
+  - Multi-attach PVC / why `Recreate` is required
+  - Ingress/DNS hostname rules on Discovery
+  - RBAC permission failures
+  - grading Job mount issues
 
-```yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: webcat-dispatcher-sa
-  namespace: webcat
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: webcat-dispatcher-role
-  namespace: webcat
-rules:
-  - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["create", "delete", "get", "list", "watch"]
-  - apiGroups: [""]
-    resources: ["pods", "pods/log"]
-    verbs: ["get", "list", "watch", "delete"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: webcat-dispatcher-binding
-  namespace: webcat
-subjects:
-  - kind: ServiceAccount
-    name: webcat-dispatcher-sa
-    namespace: webcat
-roleRef:
-  kind: Role
-  name: webcat-dispatcher-role
-  apiGroup: rbac.authorization.k8s.io
-```
-
-### 8. Network Policy (optional, depends on k3s CNI)
-
-Block egress for grading pods:
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: grading-pods-no-egress
-  namespace: webcat
-spec:
-  podSelector:
-    matchLabels:
-      app: grading-worker
-  policyTypes:
-    - Egress
-  egress: []    # empty = block all egress
-```
-
-### 9. Makefile
-
-```makefile
-NAMESPACE = webcat
-
-.PHONY: deploy destroy status logs
-
-deploy:
-	kubectl apply -f infra/k8s/namespace.yaml
-	kubectl apply -f infra/k8s/configmap.yaml
-	kubectl apply -f infra/k8s/secret.yaml
-	kubectl apply -f infra/k8s/pv-submissions.yaml
-	kubectl apply -f infra/k8s/api-deployment.yaml
-	kubectl apply -f infra/k8s/api-service.yaml
-	kubectl apply -f infra/k8s/dispatcher-deployment.yaml
-	kubectl apply -f infra/k8s/network-policy.yaml
-	@echo "Deployed. API available at http://localhost:30333"
-
-destroy:
-	kubectl delete namespace $(NAMESPACE) --ignore-not-found
-
-status:
-	kubectl get all -n $(NAMESPACE)
-
-logs-api:
-	kubectl logs -f deployment/webcat-api -n $(NAMESPACE)
-
-logs-dispatcher:
-	kubectl logs -f deployment/webcat-dispatcher -n $(NAMESPACE)
-```
-
-### 10. Deployment Documentation
-
-Create `docs/DEPLOYMENT.md` covering:
-- Prerequisites (k3s installed, Docker images built and available)
-- How to build and push the Docker image
-- How to configure secrets for production
-- Step-by-step deployment commands
-- How to verify the deployment is working
-- How to update the deployment (rolling update)
-- How to rollback
-- How to check logs
-- Troubleshooting common issues
+> Optional (original Endeavour/k3s scope): Makefile wrappers and NetworkPolicy are useful in a single-node k3s environment, but were not required for the Discovery deployment path captured in this repo.
 
 ## Acceptance Criteria
 
-- [ ] `make deploy` successfully deploys all resources to k3s
-- [ ] API pod starts and responds to health checks
-- [ ] Dispatcher pod starts and can create grading Job pods
-- [ ] Grading pods can read files from the shared hostPath volume
-- [ ] RBAC allows dispatcher to manage Jobs and Pods
-- [ ] `make destroy` cleanly removes everything
-- [ ] `make status` shows all running resources
-- [ ] Deployment documentation is clear enough for someone unfamiliar with the system
+- [ ] `kubectl apply -f infra/db-deployment.yaml` results in a ready Postgres pod and `db-service` resolves in-cluster
+- [ ] `kubectl apply -f infra/dispatcher-rbac.yaml` applies cleanly in Discovery (no forbidden RBAC verbs)
+- [ ] `kubectl apply -f infra/api-dispatcher-deployment.yaml` produces a ready pod with:
+  - [ ] initContainer migrations completed successfully
+  - [ ] API container ready and serving `/api/v1/health`
+  - [ ] dispatcher sidecar running without port conflicts
+- [ ] Deployment uses correct Discovery ingress hostname (`*.discovery.cs.vt.edu`)
+- [ ] Deployment uses RWO-safe strategy (`Recreate`)
+- [ ] Dispatcher can create and manage grading `Job`s in the configured namespace (RBAC works)
+- [ ] Grading Jobs use PVC/subPath mounting when `K8S_SUBMISSIONS_PVC` is set (no `hostPath` dependency on Discovery)
+- [ ] Documentation in `docs/DEPLOYMENT.md` is sufficient for a clean redeploy/debug cycle

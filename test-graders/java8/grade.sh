@@ -1,0 +1,79 @@
+#!/bin/sh
+set -eu
+
+SUBMISSION_DIR="/grading/submission"
+OUT_DIR="/grading/output"
+WORK_DIR="/tmp/grader-java8"
+mkdir -p "$OUT_DIR" "$WORK_DIR"
+
+payload_file="$OUT_DIR/payload-java8.txt"
+results_file="$OUT_DIR/results.json"
+
+run_and_capture() {
+  # shellcheck disable=SC2068
+  "$@" >>"$payload_file" 2>&1
+}
+
+echo "java8 grader starting" >"$payload_file"
+
+if [ ! -d "$SUBMISSION_DIR" ]; then
+  echo "ERROR: /grading/submission missing" >>"$payload_file"
+  cat >"$results_file" <<EOF
+{ "correctness_score": 0, "tool_score": 0, "comments": "Missing submission directory", "comment_format": 0, "test_output": "missing /grading/submission", "exit_code": 1, "runtime_ms": 1 }
+EOF
+  exit 1
+fi
+
+cp -R "$SUBMISSION_DIR"/. "$WORK_DIR"/
+cp /home/grader/TestRunner.java "$WORK_DIR"/
+
+if [ ! -f "$WORK_DIR/Calculator.java" ]; then
+  echo "ERROR: expected Calculator.java at submission root" >>"$payload_file"
+  cat >"$results_file" <<EOF
+{ "correctness_score": 0, "tool_score": 0, "comments": "Missing Calculator.java", "comment_format": 0, "test_output": "missing Calculator.java", "exit_code": 1, "runtime_ms": 1 }
+EOF
+  exit 1
+fi
+
+start_ms="$(date +%s%3N 2>/dev/null || true)"
+
+run_and_capture javac -d "$WORK_DIR" "$WORK_DIR"/*.java || {
+  echo "javac failed" >>"$payload_file"
+  cat >"$results_file" <<EOF
+{ "correctness_score": 0, "tool_score": 0, "comments": "Compilation failed", "comment_format": 0, "test_output": "javac failed", "exit_code": 1, "runtime_ms": 1 }
+EOF
+  exit 1
+}
+
+run_and_capture java -cp "$WORK_DIR" TestRunner
+exit_code="$?"
+
+end_ms="$(date +%s%3N 2>/dev/null || true)"
+runtime_ms="1"
+if [ -n "${start_ms:-}" ] && [ -n "${end_ms:-}" ]; then
+  runtime_ms="$((end_ms - start_ms))"
+fi
+
+passed="$(grep -Eo 'passed=[0-9]+' "$payload_file" | tail -n 1 | cut -d= -f2 || echo 0)"
+total="$(grep -Eo 'total=[0-9]+' "$payload_file" | tail -n 1 | cut -d= -f2 || echo 0)"
+
+if [ "$total" -gt 0 ]; then
+  correctness_score="$((passed * 100 / total))"
+else
+  correctness_score="0"
+fi
+
+cat >"$results_file" <<EOF
+{
+  "correctness_score": $correctness_score,
+  "tool_score": 100,
+  "comments": "Java8 test grader finished.",
+  "comment_format": 0,
+  "test_output": "passed $passed/$total",
+  "exit_code": $exit_code,
+  "runtime_ms": $runtime_ms
+}
+EOF
+
+exit "$exit_code"
+

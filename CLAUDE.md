@@ -102,6 +102,7 @@ Grading Docker images follow a standard interface:
 ```
 /
 ├── CLAUDE.md                    ← You are here
+├── infra/                       ← Kubernetes manifests + Makefile (Task 16)
 ├── docs/
 │   ├── ARCHITECTURE.md          ← Detailed architecture
 │   ├── DATABASE.md              ← Full schema with all columns
