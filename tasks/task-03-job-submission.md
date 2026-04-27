@@ -1,6 +1,6 @@
 # Task 3: Job Submission Endpoint
 
-**Status:** Not Started
+**Status:** Completed
 **Assignee:** (pick up)
 **Priority:** HIGH — core functionality
 **Dependencies:** Task 1 (schema must exist)
@@ -14,6 +14,7 @@ Read `/docs/API_ENDPOINTS.md` for the full endpoint spec. This is the primary en
 ### 1. Validator: `app/validators/job_validator.ts`
 
 Create VineJS validator for the job submission request:
+
 - `docker_image_tag`: required, string, max 255
 - `submission_id`: required, integer
 - `callback_url`: optional, valid URL
@@ -25,6 +26,7 @@ Create VineJS validator for the job submission request:
 ### 2. Service: `app/services/file_service.ts` (partial — submission part only)
 
 Implement `storeSubmissionFiles(jobId: number, files: MultipartFile[])`:
+
 - Create directory `/data/submissions/{jobId}/input/`
 - Move uploaded files into that directory
 - Return the full path as a string
@@ -33,6 +35,7 @@ Implement `storeSubmissionFiles(jobId: number, files: MultipartFile[])`:
 ### 3. Service: `app/services/job_lifecycle_service.ts` (partial — submit only)
 
 Implement `submitJob(payload)`:
+
 - Look up `image_configs` by `docker_image_tag`
 - If not found, throw 404
 - If found but `is_active = false`, throw 409
@@ -46,6 +49,7 @@ Implement `submitJob(payload)`:
 ### 4. Controller: `app/controllers/jobs_controller.ts` (partial — store method)
 
 Implement the `store` method:
+
 - Parse multipart form data (files + fields)
 - Validate using `createJobValidator`
 - Call `jobLifecycleService.submitJob()`
@@ -60,6 +64,7 @@ router.post('/api/v1/jobs', [JobsController, 'store'])
 ## File Upload Notes
 
 Use AdonisJS multipart handling:
+
 ```typescript
 const files = request.files('files', { size: '50mb', extnames: ['java', 'py', 'cpp', 'c', 'h', 'js', 'ts', 'zip', 'tar', 'gz'] })
 ```
@@ -68,10 +73,11 @@ Be generous with allowed extensions — professors may use any language. Conside
 
 ## Acceptance Criteria
 
-- [ ] `POST /api/v1/jobs` with valid multipart form returns 201 with job_id and status
-- [ ] Files are stored to `/data/submissions/{jobId}/input/`
-- [ ] Invalid docker_image_tag returns 404
-- [ ] Inactive docker_image_tag returns 409
-- [ ] Missing required fields return 400 with descriptive errors
-- [ ] estimated_runtime is correctly pulled from image_configs
-- [ ] Queue position is returned in the response
+- `POST /api/v1/jobs` with valid multipart form returns 201 with job_id and status
+- Files are stored to `/data/submissions/{jobId}/input/`
+- Invalid docker_image_tag returns 404
+- Inactive docker_image_tag returns 409
+- Missing required fields return 400 with descriptive errors
+- estimated_runtime is correctly pulled from image_configs
+- Queue position is returned in the response
+

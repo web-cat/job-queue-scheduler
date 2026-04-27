@@ -1,6 +1,6 @@
 # Task 4: Job Status & Results Endpoints
 
-**Status:** Not Started
+**Status:** Completed
 **Assignee:** (pick up)
 **Priority:** HIGH — core functionality
 **Dependencies:** Task 1 (schema must exist)

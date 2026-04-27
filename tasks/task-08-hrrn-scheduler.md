@@ -1,6 +1,6 @@
 # Task 8: HRRN Scheduler Service
 
-**Status:** Not Started
+**Status:** Completed
 **Assignee:** (pick up)
 **Priority:** HIGH — core scheduling logic
 **Dependencies:** Task 1 (schema must exist)

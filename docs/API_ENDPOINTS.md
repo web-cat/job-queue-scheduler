@@ -68,6 +68,11 @@ Submit a new grading job.
 - `409` — docker_image_tag exists but is_active = false
 - `413` — File upload exceeds size limit
 
+**Zip submissions (folder structure):**
+- Clients may upload a **single `.zip` file** in the `files` field. The server extracts it into the job’s `input/` directory **preserving folder structure**.
+- For security, zip entries with unsafe paths (absolute paths, `..`, backslashes) are rejected.
+- If multiple files are uploaded (non-zip), they are stored **flat** (no directory structure).
+
 ---
 
 ### DELETE /api/v1/jobs/{jobId}
@@ -471,3 +476,11 @@ Liveness check for K8s probes and monitoring.
   }
 }
 ```
+
+---
+
+## Debugging grading jobs (operators)
+
+By default, the dispatcher deletes the Kubernetes Job after collecting logs/results. For cluster-side debugging (e.g., `ImagePullBackOff`, crash loops), set one of:
+- `KEEP_GRADING_JOBS=true` — keep all grading Jobs until K8s TTL cleanup
+- `KEEP_FAILED_GRADING_JOBS=true` — keep only failed grading Jobs

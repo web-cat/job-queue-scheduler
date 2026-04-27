@@ -38,6 +38,10 @@ build_and_push() {
 }
 
 build_and_push "test-grader-java8"  "test-graders/java8"  "test-graders/java8/Dockerfile"
+build_and_push "test-grader-java8-zip"  "test-graders/java8-zip"  "test-graders/java8-zip/Dockerfile"
+build_and_push "test-grader-python-zip" "test-graders/python-zip" "test-graders/python-zip/Dockerfile"
+build_and_push "test-grader-cpp-zip"    "test-graders/cpp-zip"    "test-graders/cpp-zip/Dockerfile"
+build_and_push "test-grader-c-zip"      "test-graders/c-zip"      "test-graders/c-zip/Dockerfile"
 build_and_push "test-grader-python" "test-graders/python" "test-graders/python/Dockerfile"
 build_and_push "test-grader-cpp"    "test-graders/cpp"    "test-graders/cpp/Dockerfile"
 build_and_push "test-grader-c"      "test-graders/c"      "test-graders/c/Dockerfile"

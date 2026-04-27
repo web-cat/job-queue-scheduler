@@ -1,6 +1,6 @@
 # Task 9: Job Lifecycle Service
 
-**Status:** Not Started
+**Status:** Completed
 **Assignee:** (pick up)
 **Priority:** HIGH — manages job state transitions
 **Dependencies:** Task 1 (schema must exist)

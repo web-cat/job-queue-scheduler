@@ -1,6 +1,6 @@
 # Task 11: Callback/Webhook Service
 
-**Status:** Not Started
+**Status:** Completed
 **Assignee:** (pick up)
 **Priority:** MEDIUM — needed for pushing results to frontend
 **Dependencies:** Task 1, Task 9 (triggered by markCompleted)

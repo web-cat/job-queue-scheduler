@@ -1,6 +1,6 @@
 # Task 5: Queue Endpoints
 
-**Status:** Not Started
+**Status:** Completed
 **Assignee:** (pick up)
 **Priority:** MEDIUM
 **Dependencies:** Task 1 (schema must exist)

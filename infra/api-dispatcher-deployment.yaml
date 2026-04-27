@@ -68,6 +68,10 @@ spec:
               value: "https://web-cat-execution-service.discovery.cs.vt.edu"
             - name: SUBMISSIONS_PATH
               value: "/data/submissions"
+            # IMPORTANT: payload files must live on the shared submissions PVC so the
+            # API container can serve them after the dispatcher extracts them.
+            - name: PAYLOADS_PATH
+              value: "/data/submissions/payloads"
             - name: ENABLE_DISPATCHER
               value: "false"
       containers:
@@ -118,6 +122,10 @@ spec:
               value: "https://web-cat-execution-service.discovery.cs.vt.edu" 
             - name: SUBMISSIONS_PATH
               value: "/data/submissions"
+            # IMPORTANT: payload files must live on the shared submissions PVC so the
+            # API container can serve them after the dispatcher extracts them.
+            - name: PAYLOADS_PATH
+              value: "/data/submissions/payloads"
             - name: ENABLE_DISPATCHER
               value: "false"
           livenessProbe:
@@ -184,6 +192,10 @@ spec:
               value: "https://web-cat-execution-service.discovery.cs.vt.edu"
             - name: SUBMISSIONS_PATH
               value: "/data/submissions"
+            # IMPORTANT: payload files must live on the shared submissions PVC so the
+            # API container can serve them after the dispatcher extracts them.
+            - name: PAYLOADS_PATH
+              value: "/data/submissions/payloads"
             - name: ENABLE_DISPATCHER
               value: "true"
           resources:

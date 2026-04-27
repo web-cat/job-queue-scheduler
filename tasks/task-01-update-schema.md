@@ -1,7 +1,7 @@
 # Task 1: Update Database Schema & Migrations
 
 **Status:** Completed
-**Assignee:** Tomas
+**Assignee:** Tomas and Sy
 **Priority:** HIGH — blocks most other tasks
 **Dependencies:** None
 

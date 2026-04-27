@@ -1,0 +1,1 @@
+{"data":{"job_id":8,"submission_id":900001,"status":"pending","docker_image_tag":"ghcr.io/sytraore/job-queue-scheduler/test-grader-java8:latest","estimated_runtime":19.15525,"queue_position":1}}

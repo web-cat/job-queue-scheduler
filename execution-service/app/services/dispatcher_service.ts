@@ -183,6 +183,7 @@ export class DispatcherService {
     const jobId = Number(job.jobId)
     const jobName = this.k8s.getJobName(jobId)
     let podCreated = false
+    let completedSuccessfully: boolean | null = null
 
     try {
       await job.load('imageConfig')
@@ -208,6 +209,7 @@ export class DispatcherService {
       await job.save()
 
       const completion = await this.k8s.waitForJobCompletion(podName, cfg.timeoutSeconds)
+      completedSuccessfully = completion.succeeded
 
       if (completion.succeeded) {
         await this.handleSuccessfulRun(jobId, podName, completion.durationSeconds)
@@ -223,9 +225,19 @@ export class DispatcherService {
         )
     } finally {
       if (podCreated) {
-        await this.k8s
-          .deleteJob(jobName)
-          .catch((err) => log.warn({ jobId, jobName, err }, 'Failed to delete K8s Job during cleanup'))
+        const keepAll = (process.env.KEEP_GRADING_JOBS ?? '').toLowerCase() === 'true'
+        const keepFailed = (process.env.KEEP_FAILED_GRADING_JOBS ?? '').toLowerCase() === 'true'
+
+        // Default behavior: delete the job immediately after we collect logs/results.
+        // For debugging (e.g., image pull errors, crash loops), operators can keep
+        // jobs around temporarily to inspect pods/events in the cluster UI.
+        const shouldKeep = keepAll || (keepFailed && completedSuccessfully === false)
+
+        if (!shouldKeep) {
+          await this.k8s
+            .deleteJob(jobName)
+            .catch((err) => log.warn({ jobId, jobName, err }, 'Failed to delete K8s Job during cleanup'))
+        }
       }
       await this.files
         .cleanupSubmission(jobId)

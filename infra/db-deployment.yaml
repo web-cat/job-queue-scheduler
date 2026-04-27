@@ -57,7 +57,7 @@ spec:
       volumes:
       - name: postgres-storage
         persistentVolumeClaim:
-          claimName: web-cat-execution-service-pgdata
+          claimName: webcat-execution-service-pgdata
 
 ---
 

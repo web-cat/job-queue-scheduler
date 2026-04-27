@@ -1,6 +1,6 @@
 # Task 17: Payload File Support in Grading Contract
 
-**Status:** Not Started
+**Status:** Completed
 **Assignee:** (pick up)
 **Priority:** HIGH — professor-specified requirement
 **Dependencies:** Task 12 (dispatcher), Task 14 (file management)

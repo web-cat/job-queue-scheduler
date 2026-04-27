@@ -1,6 +1,6 @@
 # Task 10: Timeout & Cleanup Background Service
 
-**Status:** Not Started
+**Status:** Completed
 **Assignee:** (pick up)
 **Priority:** MEDIUM — important for reliability
 **Dependencies:** Task 1, Task 9 (uses markFailed)
