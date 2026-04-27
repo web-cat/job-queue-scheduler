@@ -1,6 +1,6 @@
 # Task 12: Dispatcher Service — Core Loop
 
-**Status:** Not Started
+**Status:** Completed
 **Assignee:** (pick up)
 **Priority:** HIGH — this is what actually runs grading jobs
 **Dependencies:** Task 8 (scheduler), Task 9 (lifecycle), Task 13 (K8s integration), Task 14 (file management)

@@ -1,8 +1,11 @@
 import { access, chmod, constants, copyFile, mkdir, readdir, readFile, rename, rm, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { Dirent } from 'node:fs'
+import { createWriteStream } from 'node:fs'
+import { pipeline } from 'node:stream/promises'
 import type { MultipartFile } from '@adonisjs/core/bodyparser'
 import logger from '@adonisjs/core/services/logger'
+import yauzl from 'yauzl'
 
 /** Domain error for file operations; optional `httpStatus` when the API should map it to a response. */
 
@@ -79,12 +82,21 @@ const DEFAULT_SUBMISSIONS_PATH = '/data/submissions'
 const DEFAULT_PAYLOADS_PATH = '/data/payloads'
 const DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 const DEFAULT_MAX_PAYLOAD_BYTES = 100 * 1024 * 1024
+const DEFAULT_MAX_ZIP_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
+const DEFAULT_MAX_ZIP_FILES = 10_000
 // Match the varchar sizes on job_results.payload_filename / payload_path.
 const MAX_PAYLOAD_FILENAME_LENGTH = 255
 const MAX_PAYLOAD_PATH_LENGTH = 500
 const RESULTS_JSON_NAME = 'results.json'
 const MAX_RESULTS_FILE_BYTES = 1024 * 1024
 const TRUNCATE_FIELD_CHARS = 500_000
+
+function isZipUpload(file: MultipartFile): boolean {
+  const name = (file.clientName ?? '').toLowerCase()
+  if (name.endsWith('.zip')) return true
+  const type = `${file.type}/${file.subtype}`.toLowerCase()
+  return type === 'application/zip' || type === 'application/x-zip-compressed'
+}
 
 function logFsError(context: string, err: unknown): void {
   const code = err && typeof err === 'object' && 'code' in err ? String((err as NodeJS.ErrnoException).code) : undefined
@@ -103,6 +115,20 @@ function parseMaxPayloadBytes(): number {
   if (!raw) return DEFAULT_MAX_PAYLOAD_BYTES
   const n = Number(raw)
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_PAYLOAD_BYTES
+}
+
+function parseMaxZipUncompressedBytes(): number {
+  const raw = process.env.MAX_ZIP_UNCOMPRESSED_BYTES
+  if (!raw) return DEFAULT_MAX_ZIP_UNCOMPRESSED_BYTES
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_ZIP_UNCOMPRESSED_BYTES
+}
+
+function parseMaxZipFiles(): number {
+  const raw = process.env.MAX_ZIP_FILES
+  if (!raw) return DEFAULT_MAX_ZIP_FILES
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_ZIP_FILES
 }
 
 /**
@@ -217,6 +243,14 @@ export class FileService {
 
   private get maxPayloadBytes(): number {
     return this.options?.maxPayloadBytes ?? parseMaxPayloadBytes()
+  }
+
+  private get maxZipUncompressedBytes(): number {
+    return parseMaxZipUncompressedBytes()
+  }
+
+  private get maxZipFiles(): number {
+    return parseMaxZipFiles()
   }
 
   get submissionsBasePath(): string {
@@ -485,6 +519,37 @@ export class FileService {
     try {
       await mkdir(inputPath, { recursive: true })
 
+      // Zip upload: preserve folder structure by extracting into the job's input directory.
+      // We only support a single archive per submission to keep semantics clear.
+      if (files.length === 1 && isZipUpload(files[0])) {
+        const zip = files[0]
+        if (!zip.isValid) {
+          throw new FileServiceError(`Invalid upload for file ${zip.clientName}`, 'INVALID_FILE', {
+            httpStatus: 400,
+          })
+        }
+
+        const archiveName = assertSafeClientFileName(zip.clientName)
+        const archivePath = path.join(inputPath, archiveName)
+
+        await zip.move(inputPath, { name: archiveName, overwrite: false })
+        if (!zip.isValid) {
+          throw new FileServiceError(
+            zip.errors[0]?.message || `Failed to store file ${archiveName}`,
+            'FILE_MOVE_FAILED',
+            { httpStatus: 400 }
+          )
+        }
+
+        try {
+          await this.extractZipToDirectory(archivePath, inputPath)
+        } finally {
+          await rm(archivePath, { force: true }).catch(() => undefined)
+        }
+
+        return inputPath
+      }
+
       const fileNames = new Set<string>()
       const duplicates: string[] = []
 
@@ -571,6 +636,107 @@ export class FileService {
         { cause: error }
       )
     }
+  }
+
+  private async extractZipToDirectory(zipPath: string, destDir: string): Promise<void> {
+    const maxBytes = this.maxZipUncompressedBytes
+    const maxFiles = this.maxZipFiles
+    const canonicalDest = path.resolve(destDir) + path.sep
+
+    await new Promise<void>((resolve, reject) => {
+      yauzl.open(zipPath, { lazyEntries: true, autoClose: true }, (err, zipfile) => {
+        if (err || !zipfile) return reject(err ?? new Error('Failed to open zip'))
+
+        let writtenBytes = 0
+        let fileCount = 0
+
+        const fail = (e: unknown) => {
+          try {
+            zipfile.close()
+          } catch {}
+          reject(e)
+        }
+
+        zipfile.readEntry()
+
+        zipfile.on('entry', (entry: yauzl.Entry) => {
+          const name = entry.fileName
+
+          // Directories end with '/'
+          if (name.endsWith('/')) {
+            zipfile.readEntry()
+            return
+          }
+
+          fileCount++
+          if (fileCount > maxFiles) {
+            return fail(
+              new FileServiceError(`Zip contains too many files (max ${maxFiles})`, 'ZIP_TOO_MANY_FILES', {
+                httpStatus: 413,
+              })
+            )
+          }
+
+          // Prevent zip-slip: reject absolute paths, drive letters, backslashes, and '..'
+          if (
+            name.includes('\0') ||
+            name.startsWith('/') ||
+            /^[A-Za-z]:/.test(name) ||
+            name.includes('\\') ||
+            name.split('/').some((p) => p === '..')
+          ) {
+            return fail(new FileServiceError('Zip contains unsafe path', 'ZIP_UNSAFE_PATH', { httpStatus: 400 }))
+          }
+
+          // Reject symlinks (unix mode 0120000 in upper 16 bits of external attrs)
+          const unixType = (entry.externalFileAttributes >>> 16) & 0o170000
+          const S_IFLNK = 0o120000
+          if (unixType === S_IFLNK) {
+            return fail(new FileServiceError('Zip contains symlink entry', 'ZIP_SYMLINK', { httpStatus: 400 }))
+          }
+
+          const targetPath = path.resolve(destDir, name)
+          if (!targetPath.startsWith(canonicalDest)) {
+            return fail(new FileServiceError('Zip entry escapes destination directory', 'ZIP_UNSAFE_PATH', { httpStatus: 400 }))
+          }
+
+          const parentDir = path.dirname(targetPath)
+
+          zipfile.openReadStream(entry, async (openErr, readStream) => {
+            if (openErr || !readStream) return fail(openErr ?? new Error('Failed to open zip entry stream'))
+
+            try {
+              await mkdir(parentDir, { recursive: true })
+            } catch (mkdirErr) {
+              readStream.resume()
+              return fail(mkdirErr)
+            }
+
+            const out = createWriteStream(targetPath, { flags: 'wx' })
+
+            readStream.on('data', (chunk: Buffer) => {
+              writtenBytes += chunk.length
+              if (writtenBytes > maxBytes) {
+                readStream.destroy(
+                  new FileServiceError(
+                    `Zip exceeds max uncompressed size (${maxBytes} bytes)`,
+                    'ZIP_TOO_LARGE',
+                    { httpStatus: 413 }
+                  )
+                )
+              }
+            })
+
+            pipeline(readStream, out)
+              .then(() => zipfile.readEntry())
+              .catch((streamErr) => fail(streamErr))
+          })
+        })
+
+        zipfile.on('end', () => resolve())
+        zipfile.on('error', (e) => fail(e))
+      })
+    })
   }
 
   /**

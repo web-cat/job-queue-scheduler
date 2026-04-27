@@ -12,15 +12,15 @@
 
 ## Foundation (do these first)
 
-- [ ] [Task 1: Update Database Schema & Migrations](tasks/task-01-update-schema.md) — **Assignee:**
-- [ ] [Task 2: Documentation Setup](tasks/task-02-docs-setup.md) — **Assignee:**
+- [ ] [Task 1: Update Database Schema & Migrations](tasks/task-01-update-schema.md) — **Assignee: Sy and Tomas**
+- [ ] [Task 2: Documentation Setup](tasks/task-02-docs-setup.md) — **Assignee: Tomas**
 
 ## API Endpoints (can be done in parallel after Task 1)
 
 - [ ] [Task 3: Job Submission Endpoint](tasks/task-03-job-submission.md) — **Assignee:**
 - [ ] [Task 4: Job Status & Results Endpoints](tasks/task-04-job-status-results.md) — **Assignee:**
 - [ ] [Task 5: Queue Endpoints](tasks/task-05-queue-endpoints.md) — **Assignee:**
-- [ ] [Task 6: Image Config CRUD Endpoints](tasks/task-06-image-config-crud.md) — **Assignee:**
+- [ ] [Task 6: Image Config CRUD Endpoints](tasks/task-06-image-config-crud.md) — **Assignee: Sy**
 - [ ] [Task 7: System Config & Metrics Endpoints](tasks/task-07-config-metrics.md) — **Assignee:**
 
 ## Core Services (can start after Task 1)
@@ -33,14 +33,14 @@
 ## Dispatcher & Kubernetes (depends on Tasks 8, 9, 13, 14)
 
 - [ ] [Task 12: Dispatcher Service — Core Loop](tasks/task-12-dispatcher.md) — **Assignee:**
-- [ ] [Task 13: Kubernetes Integration](tasks/task-13-k8s-integration.md) — **Assignee:**
-- [ ] [Task 14: File Management Service](tasks/task-14-file-management.md) — **Assignee:**
+- [ ] [Task 13: Kubernetes Integration](tasks/task-13-k8s-integration.md) — **Assignee: Tomas and Sy**
+- [ ] [Task 14: File Management Service](tasks/task-14-file-management.md) — **Assignee: Sy**
 
 ## Testing & Deployment (do these last)
 
 - [ ] [Task 15: Integration Tests](tasks/task-15-integration-tests.md) — **Assignee:**
-- [ ] [Task 16: Kubernetes Manifests & Deployment](tasks/task-16-k8s-manifests.md) — **Assignee:**
-
+- [ ] [Task 16: Kubernetes Manifests & Deployment](tasks/task-16-k8s-manifests.md) — **Assignee: Sy**
+- [ ] [Task 17: Payload File](tasks/task-17-payload-file.md) — **Assignee:**
 ---
 
 ## Dependency Graph
@@ -64,16 +64,3 @@ All tasks ──→ Task 15 (Integration Tests)
 All tasks ──→ Task 16 (K8s Deployment)
 ```
 
-## Suggested Team Distribution
-
-With 5 teammates, here's one way to split the initial work (after Tasks 1 & 2 are done):
-
-| Person | Tasks | Focus Area |
-|---|---|---|
-| Person A | 3, 14 | Job submission + file handling |
-| Person B | 4, 5 | Job status, results, queue |
-| Person C | 6, 7 | Image config, system config, metrics |
-| Person D | 8, 9 | Scheduler + job lifecycle (core logic) |
-| Person E | 10, 11, 13 | Background services + K8s integration |
-
-Then everyone converges on Tasks 12, 15, 16 together.

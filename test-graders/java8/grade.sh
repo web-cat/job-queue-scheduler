@@ -27,8 +27,8 @@ fi
 cp -R "$SUBMISSION_DIR"/. "$WORK_DIR"/
 cp /home/grader/TestRunner.java "$WORK_DIR"/
 
-if [ ! -f "$WORK_DIR/Calculator.java" ]; then
-  echo "ERROR: expected Calculator.java at submission root" >>"$payload_file"
+if ! find "$WORK_DIR" -maxdepth 5 -type f -name 'Calculator.java' | grep -q .; then
+  echo "ERROR: expected Calculator.java somewhere in submission" >>"$payload_file"
   cat >"$results_file" <<EOF
 { "correctness_score": 0, "tool_score": 0, "comments": "Missing Calculator.java", "comment_format": 0, "test_output": "missing Calculator.java", "exit_code": 1, "runtime_ms": 1 }
 EOF
@@ -37,7 +37,7 @@ fi
 
 start_ms="$(date +%s%3N 2>/dev/null || true)"
 
-run_and_capture javac -d "$WORK_DIR" "$WORK_DIR"/*.java || {
+run_and_capture sh -c 'find "$1" -type f -name "*.java" -print0 | xargs -0 javac -d "$1"' _ "$WORK_DIR" || {
   echo "javac failed" >>"$payload_file"
   cat >"$results_file" <<EOF
 { "correctness_score": 0, "tool_score": 0, "comments": "Compilation failed", "comment_format": 0, "test_output": "javac failed", "exit_code": 1, "runtime_ms": 1 }

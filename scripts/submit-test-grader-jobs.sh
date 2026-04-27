@@ -48,6 +48,10 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 JAVA_TAG="ghcr.io/${OWNER}/${REPO}/test-grader-java8:latest"
+JAVA_ZIP_TAG="ghcr.io/${OWNER}/${REPO}/test-grader-java8-zip:latest"
+PY_ZIP_TAG="ghcr.io/${OWNER}/${REPO}/test-grader-python-zip:latest"
+CPP_ZIP_TAG="ghcr.io/${OWNER}/${REPO}/test-grader-cpp-zip:latest"
+C_ZIP_TAG="ghcr.io/${OWNER}/${REPO}/test-grader-c-zip:latest"
 PY_TAG="ghcr.io/${OWNER}/${REPO}/test-grader-python:latest"
 CPP_TAG="ghcr.io/${OWNER}/${REPO}/test-grader-cpp:latest"
 C_TAG="ghcr.io/${OWNER}/${REPO}/test-grader-c:latest"
@@ -58,6 +62,50 @@ api_post_json "/images" "{
   \"display_name\": \"Test Grader (Java 8)\",
   \"timeout_seconds\": 60,
   \"memory_limit_mb\": 512,
+  \"cpu_limit_millicores\": 500,
+  \"max_retries\": 0,
+  \"default_priority\": 5,
+  \"default_estimated_runtime\": 5.0
+}" | sed -n '1,40p'
+
+api_post_json "/images" "{
+  \"docker_image_tag\": \"${JAVA_ZIP_TAG}\",
+  \"display_name\": \"Test Grader (Java 8, zip payload)\",
+  \"timeout_seconds\": 60,
+  \"memory_limit_mb\": 512,
+  \"cpu_limit_millicores\": 500,
+  \"max_retries\": 0,
+  \"default_priority\": 5,
+  \"default_estimated_runtime\": 5.0
+}" | sed -n '1,40p'
+
+api_post_json "/images" "{
+  \"docker_image_tag\": \"${PY_ZIP_TAG}\",
+  \"display_name\": \"Test Grader (Python, zip payload)\",
+  \"timeout_seconds\": 60,
+  \"memory_limit_mb\": 256,
+  \"cpu_limit_millicores\": 250,
+  \"max_retries\": 0,
+  \"default_priority\": 5,
+  \"default_estimated_runtime\": 5.0
+}" | sed -n '1,40p'
+
+api_post_json "/images" "{
+  \"docker_image_tag\": \"${CPP_ZIP_TAG}\",
+  \"display_name\": \"Test Grader (C++, zip payload)\",
+  \"timeout_seconds\": 60,
+  \"memory_limit_mb\": 256,
+  \"cpu_limit_millicores\": 500,
+  \"max_retries\": 0,
+  \"default_priority\": 5,
+  \"default_estimated_runtime\": 5.0
+}" | sed -n '1,40p'
+
+api_post_json "/images" "{
+  \"docker_image_tag\": \"${C_ZIP_TAG}\",
+  \"display_name\": \"Test Grader (C, zip payload)\",
+  \"timeout_seconds\": 60,
+  \"memory_limit_mb\": 256,
   \"cpu_limit_millicores\": 500,
   \"max_retries\": 0,
   \"default_priority\": 5,
@@ -128,6 +176,18 @@ hdr "Submitting one job per language"
 
 hdr "Java 8 job"
 api_post_job "${JAVA_TAG}" 10001 -F "files=@${tmp}/Calculator.java" | sed -n '1,80p'
+
+hdr "Java 8 zip-payload job"
+api_post_job "${JAVA_ZIP_TAG}" 10005 -F "files=@${tmp}/Calculator.java" | sed -n '1,80p'
+
+hdr "Python zip-payload job"
+api_post_job "${PY_ZIP_TAG}" 10006 -F "files=@${tmp}/submission.py" | sed -n '1,80p'
+
+hdr "C zip-payload job"
+api_post_job "${C_ZIP_TAG}" 10007 -F "files=@${tmp}/submission.c" | sed -n '1,80p'
+
+hdr "C++ zip-payload job"
+api_post_job "${CPP_ZIP_TAG}" 10008 -F "files=@${tmp}/submission.cpp" | sed -n '1,80p'
 
 hdr "Python job"
 api_post_job "${PY_TAG}" 10002 -F "files=@${tmp}/submission.py" | sed -n '1,80p'
