@@ -10,6 +10,7 @@ chmod +x scripts/*.sh
 ```
 
 Optional env vars:
+
 - `GHCR_OWNER` (default `sytraore`)
 - `GHCR_REPO` (default `job-queue-scheduler`)
 - `PLATFORM` (default `linux/amd64`)
@@ -46,7 +47,6 @@ BASE_URL="https://web-cat-execution-service.discovery.cs.vt.edu/api/v1" \
 ./scripts/register-image-configs.sh
 ```
 
-
 ## Load test: submit 200 Java8 jobs
 
 Submits the Java8 test grader job `COUNT` times with up to `CONCURRENCY` requests in flight.
@@ -66,12 +66,14 @@ CONCURRENCY=25 \
 ```
 
 Notes:
+
 - If you see `http=404` failures from `POST /jobs`, it usually means the `docker_image_tag` is not registered in `image_configs` yet.
   - Fix: run `./scripts/submit-test-grader-jobs.sh` once (it registers the image configs), or set `AUTO_REGISTER_IMAGE=1` for the load test script.
 
 ## Submit N jobs for a grader (generic)
 
 Submits `count` jobs for the given `docker_image_tag` using either a file or a directory:
+
 - If `input_path` is a **directory**, the script zips it once and uploads it as a single `.zip` submission (preserves folder structure).
 - If `input_path` is a **file**, it uploads it as-is.
 
@@ -84,20 +86,26 @@ OUT_DIR=./tmp/submit-n \
 ```
 
 ## Demo tests
+
 First run:
 
-- **Test 1 (4 languages, flat files)**: use 
+- **Test 1 (4 languages, flat files)**: use
+
 ```bash
 BASE_URL="https://web-cat-execution-service.discovery.cs.vt.edu/api/v1" \
+./scripts/demo-test2-zip-payloads.BASE_URL="https://web-cat-execution-service.discovery.cs.vt.edu/api/v1" \
 ./scripts/submit-test-grader-jobs.sh
 ```
+
 - **Test 2 (1 zip submission, zip payload artifacts)**:
-  - Submit 4 zip jobs (Java/Python/C/C++):  
+  - Submit 4 zip jobs (Java/Python/C/C++):
+
 ```bash
-BASE_URL="https://web-cat-execution-service.discovery.cs.vt.edu/api/v1" \
-./scripts/demo-test2-zip-payloads.sh
+sh
 ```
+
 - **Test 3 (10 zip submissions, same grader, zip payloads)**:
+
 ```bash
 BASE_URL="https://web-cat-execution-service.discovery.cs.vt.edu/api/v1" \
 COUNT=10 CONCURRENCY=5 \

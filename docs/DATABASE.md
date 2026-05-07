@@ -85,6 +85,9 @@ Grading output. One row per completed job. Schema aligns with the professor's `s
 | runtime_ms | INTEGER | NULL | | Wall-clock duration in milliseconds |
 | pod_name | VARCHAR(255) | NULL | | K8s pod that ran this job |
 | node_ip | VARCHAR(50) | NULL | | K8s node IP |
+| payload_path | VARCHAR(500) | NULL | | Absolute path to payload file on the submissions PVC (internal) |
+| payload_filename | VARCHAR(255) | NULL | | Filename clients should download as |
+| payload_size_bytes | BIGINT | NULL | | Payload size in bytes |
 | created_at | TIMESTAMPTZ | NOT NULL | NOW() | |
 
 ### Constraints
@@ -150,9 +153,7 @@ Key-value store for runtime configuration. Changed via API without restart.
 |---|---|---|
 | scheduler_strategy | HRRN | Active scheduling algorithm (HRRN, FIFO, PRIORITY) |
 | max_concurrent_jobs | 10 | Maximum grading pods running simultaneously |
-| default_timeout_seconds | 30 | Fallback timeout if not set in image_configs |
 | callback_retry_max | 3 | Max webhook delivery attempts |
-| callback_retry_delay_seconds | 5 | Delay between webhook retries |
 
 ---
 

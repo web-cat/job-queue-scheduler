@@ -108,6 +108,12 @@ const routes = {
     tokens: [{"old":"/api/v1/config","type":0,"val":"api","end":""},{"old":"/api/v1/config","type":0,"val":"v1","end":""},{"old":"/api/v1/config","type":0,"val":"config","end":""}],
     types: placeholder as Registry['config.index']['types'],
   },
+  'config.store': {
+    methods: ["POST"],
+    pattern: '/api/v1/config',
+    tokens: [{"old":"/api/v1/config","type":0,"val":"api","end":""},{"old":"/api/v1/config","type":0,"val":"v1","end":""},{"old":"/api/v1/config","type":0,"val":"config","end":""}],
+    types: placeholder as Registry['config.store']['types'],
+  },
   'config.update': {
     methods: ["PUT"],
     pattern: '/api/v1/config/:key',

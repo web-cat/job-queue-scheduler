@@ -211,6 +211,18 @@ export interface Registry {
       errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/config_controller').default['index']>>>
     }
   }
+  'config.store': {
+    methods: ["POST"]
+    pattern: '/api/v1/config'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/config_controller').default['store']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/config_controller').default['store']>>>
+    }
+  }
   'config.update': {
     methods: ["PUT"]
     pattern: '/api/v1/config/:key'

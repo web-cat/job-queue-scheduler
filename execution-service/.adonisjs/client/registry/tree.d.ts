@@ -28,6 +28,7 @@ export interface ApiDefinition {
   }
   config: {
     index: typeof routes['config.index']
+    store: typeof routes['config.store']
     update: typeof routes['config.update']
   }
   metrics: {

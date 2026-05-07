@@ -98,7 +98,7 @@ Handles pushing results back to the frontend via webhooks:
 
 ### Kubernetes Integration
 
-Uses `@kubernetes/client-node` to interact with the k3s cluster:
+Uses `@kubernetes/client-node` to interact with the cluster:
 - Create ephemeral Job pods for grading
 - Monitor pod status
 - Retrieve logs
@@ -114,19 +114,21 @@ Handles the full file lifecycle:
 
 ## Deployment
 
-Single server (Endeavour) running k3s. Two always-on pods (API + dispatcher) and ephemeral grading pods that come and go.
+Kubernetes deployment on Virginia Tech Discovery. There is one always-on **Deployment** that runs the API and dispatcher together (plus an init container for migrations), and ephemeral Kubernetes Jobs for grading.
+
+We intentionally keep the API + dispatcher co-located because Discovery storage only provides **ReadWriteOnce (RWO)** volumes for our submissions PVC. Co-location avoids multi-attach failures when multiple replicas try to mount the same PVC.
 
 ```
-Endeavour (k3s single-node cluster)
-├── API pod (always running, 1 replica)
-├── Dispatcher pod (always running, 1 replica)
-├── PostgreSQL (host service or pod)
-├── grading-job-142 pod (Java grader, temporary)
-├── grading-job-143 pod (Python grader, temporary)
-└── ... (pods come and go)
+Discovery (Kubernetes)
+├── api-dispatcher Deployment (1 replica)
+│   ├── initContainer: migrate (runs `node ace migration:run --force`)
+│   ├── container: api (AdonisJS HTTP server)
+│   └── container: dispatcher (poll loop creating grading Jobs)
+├── postgres Deployment/StatefulSet (service: db-service)
+└── grading job pods (Kubernetes Job objects, temporary)
 ```
 
-For local development, use Docker Compose (docker-compose.dev.yml) which runs the API + Postgres. The dispatcher and K8s integration are not needed for API development.
+For local development, Docker Compose can be used to run the API + Postgres. In production, the dispatcher + Kubernetes integration are enabled and required for end-to-end grading.
 
 ## HRRN Scheduling Algorithm
 
@@ -175,7 +177,7 @@ Docker images must follow this interface:
 - Exit code 0 for success, non-zero for failure
 
 **Security constraints applied by the system:**
-- No network access
+- ServiceAccount token is not mounted into grading pods (`automountServiceAccountToken: false`)
 - Memory limit from image_configs
 - CPU limit from image_configs
 - Wall-clock timeout enforced by dispatcher

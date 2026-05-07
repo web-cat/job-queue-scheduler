@@ -52,6 +52,7 @@ router
   .use(middleware.auth())
 
 router.get('/api/v1/config', [ConfigController, 'index']).use(middleware.serviceAuth())
+router.post('/api/v1/config', [ConfigController, 'store']).use(middleware.serviceAuth())
 router.put('/api/v1/config/:key', [ConfigController, 'update']).use(middleware.serviceAuth())
 
 router.get('/api/v1/metrics/overview', [MetricsController, 'overview']).use(middleware.serviceAuth())

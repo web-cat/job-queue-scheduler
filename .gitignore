@@ -139,3 +139,4 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 DISCOVERY_DEPLOYMENT_LOG.md
+CHAT_SESSION_SUMMARY.md

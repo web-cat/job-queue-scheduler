@@ -126,3 +126,42 @@ test.group('PUT /api/v1/config/:key', (group) => {
     assert.equal(reloaded.value, '25')
   })
 })
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/config
+// ---------------------------------------------------------------------------
+
+test.group('POST /api/v1/config', (group) => {
+  group.each.setup(async () => {
+    await db.from('system_settings').delete()
+  })
+
+  test('returns 401 without the service API key', async ({ client }) => {
+    const res = await client.post('/api/v1/config').header('x-api-key', '').json({ key: 'x', value: 'y' })
+    res.assertStatus(401)
+  })
+
+  test('creates a new setting and returns 201', async ({ client, assert }) => {
+    const res = await client.post('/api/v1/config').json({
+      key: 'max_concurrent_jobs',
+      value: 10,
+      description: 'Dispatcher cap',
+    })
+    res.assertStatus(201)
+
+    const created = await SystemSetting.findByOrFail('key', 'max_concurrent_jobs')
+    assert.equal(created.value, '10')
+    assert.equal(created.description, 'Dispatcher cap')
+  })
+
+  test('returns 409 when creating an existing key', async ({ client }) => {
+    await SystemSetting.create({ key: 'scheduler_strategy', value: 'HRRN', description: 'Active scheduler' })
+    const res = await client.post('/api/v1/config').json({ key: 'scheduler_strategy', value: 'FIFO' })
+    res.assertStatus(409)
+  })
+
+  test('validates known keys and rejects invalid values with 422', async ({ client }) => {
+    const res = await client.post('/api/v1/config').json({ key: 'max_concurrent_jobs', value: 0 })
+    res.assertStatus(422)
+  })
+})

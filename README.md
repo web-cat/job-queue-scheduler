@@ -1,59 +1,92 @@
-# job-queue-scheduler
+# Job Queue Scheduler (Web-CAT Execution Service)
 
+Kubernetes-based grading-as-a-service backend for Web-CAT. It accepts grading jobs, queues them in Postgres, runs each job in an isolated Kubernetes Job (one pod per submission), stores results, and optionally POSTs results back to a callback URL.
 
-## Pre-req:
-    - Have Docker Desktop installed
+## High-level flow
 
-## Get Started
-- Clone repo
-- Go to the **execution service** directory 
+- **1) Build + push grader image**: A language/assignment-specific grader container must exist in a registry (ex: GHCR).
+- **2) Register the grader image in the DB**: Before the API will accept submissions for an image tag, that tag must be stored in the `image_configs` table via `POST /api/v1/images`.
+- **3) Submit jobs**: Clients submit `POST /api/v1/jobs` with files (or a single zip) + the `docker_image_tag`. The dispatcher later schedules and runs the grading job.
+- **4) Get results**: Poll `GET /api/v1/jobs/:id` or `GET /api/v1/jobs/:id/results`. If a `callback_url` was provided, the service will POST results back when the job completes.
+
+## Local development (Docker Compose)
+
+## Get Started (onboarding)
+
+If you're new to the repo, follow this checklist end-to-end.
+
+### Pre-req
+
+- Have Docker Desktop installed
+
+### Steps
+
+- Clone this repo
+- Go to the **execution service** directory:
+
 ```bash
 cd execution-service
 ```
-- Create `.env` file
-- Copy & Paste content of `.env.example` into new `.env` file
-- Fill `.env` file
-    - Reach out to **Sy** for APP_KEY and db secret credentials missing on the `.env.example` file
-- Start docker desktop app
-- Run this command:
+
+- Create a `.env` file:
+  - Copy & paste the contents of `.env.example` into a new `.env`
+  - Fill out the values (reach out to Sy for values)
+- Start Docker Desktop
+- Start the stack (use `--build` the first time, or after dependency/Dockerfile changes):
+
 ```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
-Use `--build` the first time or after Dockerfile / dependency changes so the image is up to date.
 
-   - If you already built the app and there is no image/dependency changes, run just:
-```bash 
+- If you already built previously and nothing changed, you can run:
+
+```bash
 docker compose -f docker-compose.dev.yml up
-``` 
-- In another terminal, run:
+```
+
+- In another terminal, run DB migrations (first time, and whenever migrations change):
+
 ```bash
 docker compose -f docker-compose.dev.yml exec app node ace migration:run
 ```
-  - Run this command only the first time and everytime the migration files change.
 
-## Useful Commands
-### To view database and make some queries in the terminal (make sure to replace the DB_USER and DB_NAME with the actual values), run this command (it uses psql which is CLI for databases):
+## Deployment on Discovery
+
+See `infra/README.md` for:
+- how to redeploy Postgres and the API+dispatcher on Discovery
+- how to build/push the API image
+- how to wipe PVC contents for a fresh restart
+
+## Tests
+
+Run the Adonis/Japa tests (functional + unit) from the `execution-service` package:
+
+```bash
+cd execution-service
+docker compose -f docker-compose.dev.yml up
+```
+In another terminal, run:
+```bash
+cd execution-service
+npm test
+```
+
+## Useful local commands
+
+Connect to Postgres with `psql` (replace `DB_USER` and `DB_NAME`):
+
 ```bash
 docker compose -f docker-compose.dev.yml exec database_service psql -U DB_USER -d DB_NAME
 ```
-- **Note**: `\q — quit` to stop being in mode database view (psql)
 
-### To stop the running database container, run:
-```bash
-docker compose -f docker-compose.dev.yml stop database_service
-```
+Stop containers:
 
-### To stop and remove the running database container, run:
-```bash
-docker compose -f docker-compose.dev.yml rm -sf database_service
-```
-
-### To stop all running containers, run:
 ```bash
 docker compose -f docker-compose.dev.yml down
 ```
 
-### To stop all running containers and delete the database volume (wipes Postgres data), run:
+Wipe local Postgres data (deletes the Compose volume):
+
 ```bash
 docker compose -f docker-compose.dev.yml down -v
 ```

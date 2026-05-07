@@ -1,7 +1,9 @@
 # API Endpoints
 
 Base URL: `https://web-cat-execution-service.discovery.cs.vt.edu/api/v1`
-All responses are wrapped in `{ data: ... }` by the API provider.
+Most responses are wrapped in `{ data: ... }` when controllers use `ctx.serialize(...)`.
+Some endpoints return unwrapped JSON (for example `GET /health`, and the queue + metrics endpoints).
+For client robustness, handle **both** shapes.
 Error responses: `{ error: { code: string, message: string } }`
 
 ---
@@ -82,10 +84,8 @@ Cancel a pending job.
 **Response: 200 OK**
 ```json
 {
-  "data": {
-    "job_id": 142,
-    "status": "cancelled"
-  }
+  "job_id": 142,
+  "status": "cancelled"
 }
 ```
 
@@ -104,50 +104,50 @@ Get full job details including results if completed.
 **Response: 200 OK (pending job)**
 ```json
 {
-  "data": {
-    "job_id": 142,
-    "submission_id": 5678,
-    "status": "pending",
-    "docker_image_tag": "webcat/java-grader:cs2114-p3",
-    "priority": 5,
-    "estimated_runtime": 15.0,
-    "submitted_at": "2026-03-15T23:58:00Z",
-    "started_at": null,
-    "completed_at": null,
-    "retry_count": 0,
-    "queue_position": 3,
-    "estimated_wait_seconds": 45.0,
-    "result": null
-  }
+  "job_id": 142,
+  "submission_id": 5678,
+  "status": "pending",
+  "docker_image_tag": "webcat/java-grader:cs2114-p3",
+  "priority": 5,
+  "estimated_runtime": 15.0,
+  "submitted_at": "2026-03-15T23:58:00Z",
+  "started_at": null,
+  "completed_at": null,
+  "retry_count": 0,
+  "queue_position": 3,
+  "estimated_wait_seconds": 45.0,
+  "result": null
 }
 ```
 
 **Response: 200 OK (completed job)**
 ```json
 {
-  "data": {
-    "job_id": 142,
-    "submission_id": 5678,
-    "status": "completed",
-    "docker_image_tag": "webcat/java-grader:cs2114-p3",
-    "priority": 5,
-    "estimated_runtime": 15.0,
-    "actual_runtime": 12.3,
-    "submitted_at": "2026-03-15T23:58:00Z",
-    "started_at": "2026-03-15T23:58:05Z",
-    "completed_at": "2026-03-15T23:58:17Z",
-    "retry_count": 0,
-    "queue_position": null,
-    "estimated_wait_seconds": null,
-    "result": {
-      "correctness_score": 85.0,
-      "tool_score": 92.0,
-      "comments": "2 test cases failed. Check edge case handling.",
-      "comment_format": 0,
-      "test_output": "TestAdd: PASS\nTestSubtract: PASS\nTestEdgeCase: FAIL...",
-      "exit_code": 0,
-      "runtime_ms": 12300
-    }
+  "job_id": 142,
+  "submission_id": 5678,
+  "status": "completed",
+  "docker_image_tag": "webcat/java-grader:cs2114-p3",
+  "priority": 5,
+  "estimated_runtime": 15.0,
+  "actual_runtime": 12.3,
+  "submitted_at": "2026-03-15T23:58:00Z",
+  "started_at": "2026-03-15T23:58:05Z",
+  "completed_at": "2026-03-15T23:58:17Z",
+  "retry_count": 0,
+  "queue_position": null,
+  "estimated_wait_seconds": null,
+  "result": {
+    "correctness_score": 85.0,
+    "tool_score": 92.0,
+    "comments": "2 test cases failed. Check edge case handling.",
+    "comment_format": 0,
+    "test_output": "TestAdd: PASS\nTestSubtract: PASS\nTestEdgeCase: FAIL...",
+    "exit_code": 0,
+    "runtime_ms": 12300,
+    "has_payload": true,
+    "payload_filename": "payload.zip",
+    "payload_size_bytes": 12345,
+    "payload_url": "https://web-cat-execution-service.discovery.cs.vt.edu/api/v1/jobs/142/payload"
   }
 }
 ```
@@ -164,16 +164,18 @@ Get just the grading results for a job.
 **Response: 200 OK**
 ```json
 {
-  "data": {
-    "job_id": 142,
-    "correctness_score": 85.0,
-    "tool_score": 92.0,
-    "comments": "2 test cases failed.",
-    "comment_format": 0,
-    "test_output": "TestAdd: PASS\nTestSubtract: PASS\nTestEdgeCase: FAIL...",
-    "exit_code": 0,
-    "runtime_ms": 12300
-  }
+  "job_id": 142,
+  "correctness_score": 85.0,
+  "tool_score": 92.0,
+  "comments": "2 test cases failed.",
+  "comment_format": 0,
+  "test_output": "TestAdd: PASS\nTestSubtract: PASS\nTestEdgeCase: FAIL...",
+  "exit_code": 0,
+  "runtime_ms": 12300,
+  "has_payload": true,
+  "payload_filename": "payload.zip",
+  "payload_size_bytes": 12345,
+  "payload_url": "https://web-cat-execution-service.discovery.cs.vt.edu/api/v1/jobs/142/payload"
 }
 ```
 
@@ -201,23 +203,21 @@ List jobs with optional filters.
 **Response: 200 OK**
 ```json
 {
-  "data": {
-    "total": 156,
-    "limit": 20,
-    "offset": 0,
-    "jobs": [
-      {
-        "job_id": 142,
-        "submission_id": 5678,
-        "status": "completed",
-        "docker_image_tag": "webcat/java-grader:cs2114-p3",
-        "priority": 5,
-        "submitted_at": "2026-03-15T23:58:00Z",
-        "completed_at": "2026-03-15T23:58:17Z",
-        "actual_runtime": 12.3
-      }
-    ]
-  }
+  "total": 156,
+  "limit": 20,
+  "offset": 0,
+  "jobs": [
+    {
+      "job_id": 142,
+      "submission_id": 5678,
+      "status": "completed",
+      "docker_image_tag": "webcat/java-grader:cs2114-p3",
+      "priority": 5,
+      "submitted_at": "2026-03-15T23:58:00Z",
+      "completed_at": "2026-03-15T23:58:17Z",
+      "actual_runtime": 12.3
+    }
+  ]
 }
 ```
 
@@ -227,20 +227,18 @@ List jobs with optional filters.
 
 ### GET /api/v1/queue/status
 
-Queue overview. No authentication required.
+Queue overview.
 
 **Response: 200 OK**
 ```json
 {
-  "data": {
-    "pending_count": 23,
-    "processing_count": 5,
-    "completed_today": 342,
-    "failed_today": 3,
-    "avg_wait_seconds": 12.5,
-    "active_workers": 5,
-    "estimated_drain_time_seconds": 55.2
-  }
+  "pending_count": 23,
+  "processing_count": 5,
+  "completed_today": 342,
+  "failed_today": 3,
+  "avg_wait_seconds": 12.5,
+  "active_workers": 5,
+  "estimated_drain_time_seconds": 55.2
 }
 ```
 
@@ -253,13 +251,11 @@ Get a pending job's position in the HRRN ordering.
 **Response: 200 OK**
 ```json
 {
-  "data": {
-    "job_id": 142,
-    "position": 3,
-    "hrrn_score": 4.2,
-    "estimated_wait_seconds": 45.0,
-    "total_pending": 23
-  }
+  "job_id": 142,
+  "position": 3,
+  "hrrn_score": 4.2,
+  "estimated_wait_seconds": 45.0,
+  "total_pending": 23
 }
 ```
 
@@ -367,18 +363,38 @@ Per-image performance metrics.
 
 ## System Configuration (Admin)
 
+### POST /api/v1/config
+
+Create a new system setting (used for fresh deployments where no settings exist yet).
+
+**Request Body:**
+```json
+{
+  "key": "max_concurrent_jobs",
+  "value": "10",
+  "description": "Max grading pods at once"
+}
+```
+
+**Response: 201 Created** — Returns the created setting row.
+
+**Error Responses:**
+- `400` — Missing `key` or `value`
+- `409` — Setting key already exists
+- `422` — Invalid value for a known setting key
+
+---
+
 ### GET /api/v1/config
 
 Get all system settings.
 
 **Response: 200 OK**
 ```json
-{
-  "data": [
-    { "key": "scheduler_strategy", "value": "HRRN", "description": "Active scheduling algorithm" },
-    { "key": "max_concurrent_jobs", "value": "10", "description": "Max grading pods at once" }
-  ]
-}
+[
+  { "key": "scheduler_strategy", "value": "HRRN", "description": "Active scheduling algorithm" },
+  { "key": "max_concurrent_jobs", "value": "10", "description": "Max grading pods at once" }
+]
 ```
 
 ---
@@ -410,17 +426,15 @@ System-wide metrics for dashboards.
 **Response: 200 OK**
 ```json
 {
-  "data": {
-    "total_pending": 23,
-    "total_processing": 5,
-    "total_completed_24h": 1200,
-    "total_failed_24h": 15,
-    "avg_wait_seconds_24h": 11.3,
-    "avg_execution_seconds_24h": 14.7,
-    "throughput_per_hour": 50.0,
-    "failed_rate_24h": 0.012,
-    "oldest_pending_age_seconds": 45.2
-  }
+  "total_pending": 23,
+  "total_processing": 5,
+  "total_completed_24h": 1200,
+  "total_failed_24h": 15,
+  "avg_wait_seconds_24h": 11.3,
+  "avg_execution_seconds_24h": 14.7,
+  "throughput_per_hour": 50.0,
+  "failed_rate_24h": 0.012,
+  "oldest_pending_age_seconds": 45.2
 }
 ```
 
@@ -432,17 +446,15 @@ Per-image metrics breakdown.
 
 **Response: 200 OK**
 ```json
-{
-  "data": [
-    {
-      "docker_image_tag": "webcat/java-grader:cs2114-p3",
-      "total_jobs_24h": 200,
-      "avg_runtime_seconds": 12.3,
-      "success_rate": 0.97,
-      "avg_wait_seconds": 8.5
-    }
-  ]
-}
+[
+  {
+    "docker_image_tag": "webcat/java-grader:cs2114-p3",
+    "total_jobs": 200,
+    "avg_runtime_seconds": 12.3,
+    "avg_wait_seconds": 8.5,
+    "success_rate": 0.97
+  }
+]
 ```
 
 ---
@@ -456,24 +468,17 @@ Liveness check for K8s probes and monitoring.
 **Response: 200 OK**
 ```json
 {
-  "data": {
-    "status": "healthy",
-    "database": "connected",
-    "scheduler_strategy": "HRRN",
-    "active_pods": 5,
-    "timestamp": "2026-03-15T23:58:00Z"
-  }
+  "status": "ok",
+  "database": "connected",
+  "scheduler_strategy": "HRRN"
 }
 ```
 
 **Response: 503 Service Unavailable**
 ```json
 {
-  "data": {
-    "status": "unhealthy",
-    "database": "disconnected",
-    "timestamp": "2026-03-15T23:58:00Z"
-  }
+  "status": "error",
+  "database": "unreachable"
 }
 ```
 

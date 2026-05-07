@@ -34,7 +34,7 @@ execution-service/
 │   ├── validators/           # Request validation (VineJS)
 │   │   ├── job_validator.ts
 │   │   ├── image_config_validator.ts
-│   │   └── config_validator.ts
+│   │   └── user.ts
 │   └── exceptions/           # Custom error classes
 │       └── handler.ts
 ├── database/
@@ -160,7 +160,11 @@ export class JobNotFoundException extends Exception {
 
 ## Response Format
 
-The existing API provider wraps all responses in `{ data: ... }`. Do not manually wrap responses. Just return the data from your controller and the provider handles the rest.
+The codebase includes an API serializer (`execution-service/providers/api_provider.ts`) that wraps **serialized** responses in `{ data: ... }` via `ctx.serialize(...)` / the injected `serialize(...)` helper.
+
+Not every controller currently uses `serialize`, so some endpoints return unwrapped JSON (for example `GET /api/v1/health`, queue endpoints, and metrics endpoints).
+
+**Preferred convention for new endpoints:** return `ctx.serialize(data)` for consistent `{ data: ... }` wrapping.
 
 For error responses, throw exceptions — the exception handler formats them consistently.
 

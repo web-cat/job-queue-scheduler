@@ -21,6 +21,7 @@ export type ScannedRoutes = {
     'access_token.store': { paramsTuple?: []; params?: {} }
     'access_token.destroy': { paramsTuple?: []; params?: {} }
     'config.index': { paramsTuple?: []; params?: {} }
+    'config.store': { paramsTuple?: []; params?: {} }
     'config.update': { paramsTuple: [ParamValue]; params: {'key': ParamValue} }
     'metrics.overview': { paramsTuple?: []; params?: {} }
     'metrics.image_breakdown': { paramsTuple?: []; params?: {} }
@@ -60,6 +61,7 @@ export type ScannedRoutes = {
     'images.store': { paramsTuple?: []; params?: {} }
     'jobs.store': { paramsTuple?: []; params?: {} }
     'access_token.store': { paramsTuple?: []; params?: {} }
+    'config.store': { paramsTuple?: []; params?: {} }
   }
   PUT: {
     'images.update': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
